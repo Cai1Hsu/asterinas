@@ -4,8 +4,6 @@
 
 use core::ffi::c_void;
 
-pub use unwinding::panic::{begin_panic, catch_unwind};
-
 use crate::{
     arch::qemu::{exit_qemu, QemuExitCode},
     early_print, early_println,
@@ -16,10 +14,14 @@ extern crate cfg_if;
 extern crate gimli;
 
 use gimli::Register;
-use unwinding::abi::{
+
+#[cfg(not(target_arch = "loongarch64"))]
+use unwinding::{
+    panic::{begin_panic, catch_unwind},
+    abi::{
     UnwindContext, UnwindReasonCode, _Unwind_Backtrace, _Unwind_FindEnclosingFunction,
     _Unwind_GetGR, _Unwind_GetIP,
-};
+}};
 
 /// The default panic handler for OSTD based kernels.
 ///
@@ -43,6 +45,7 @@ pub fn __ostd_panic_handler(info: &core::panic::PanicInfo) -> ! {
 
     early_println!("Non-resettable panic! {:#?}", info);
 
+    #[cfg(not(target_arch = "loongarch64"))]
     print_stack_trace();
     abort();
 }
@@ -55,6 +58,7 @@ pub fn abort() -> ! {
 /// Prints the stack trace of the current thread to the console.
 ///
 /// The printing procedure is protected by a spin lock to prevent interleaving.
+#[cfg(not(target_arch = "loongarch64"))]
 pub fn print_stack_trace() {
     /// We acquire a global lock to prevent the frames in the stack trace from
     /// interleaving. The spin lock is used merely for its simplicity.
