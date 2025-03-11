@@ -2,6 +2,8 @@
 
 //! The LoongArch boot module defines the entrypoints of Asterinas.
 
+pub mod smp;
+
 use core::arch::global_asm;
 
 use loongArch64::register::{pwch, pwcl, stlbps, tlbidx, tlbrehi};
