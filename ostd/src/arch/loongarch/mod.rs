@@ -1,5 +1,6 @@
 pub mod cpu;
 pub mod device;
+pub(crate) mod irq;
 pub mod qemu;
 pub mod serial;
 
