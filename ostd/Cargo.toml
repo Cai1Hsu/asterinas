@@ -60,6 +60,7 @@ fdt = { version = "0.1.5", features = ["pretty-printing"] }
 
 [target.loongarch64-unknown-none.dependencies]
 loongArch64 = "0.2.4"
+fdt = { version = "0.1.5", features = ["pretty-printing"] }
 
 [features]
 default = ["cvm_guest"]
