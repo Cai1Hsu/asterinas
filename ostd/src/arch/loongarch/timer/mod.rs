@@ -19,7 +19,7 @@ pub(super) fn init() {
 
     let cc_freq = CPUCFG::read(0x4).get_bits(0, 31) as u64;
     let cc_mul = CPUCFG::read(0x5).get_bits(0, 15) as u64;
-    let cc_div = CPUCFG::read(0x5).get_bits(15, 31) as u64;
+    let cc_div = CPUCFG::read(0x5).get_bits(16, 31) as u64;
 
     let timer_freq = cc_freq * cc_mul / cc_div;
 
