@@ -55,12 +55,12 @@ save_context:
     st.d    $t0,    $sp, 34*8
 
     # save user sp
-    csrrd   $t0     0x30            # SAVE0
+    csrrd   $t0,    0x30            # SAVE0
     st.d    $t0,    $sp, 3*8
 
     csrrd   $t0,    0x1             # PRMD
     andi    $t0,    $t0, 0b11       # extract PPLV field
-    bnez    trap_from_user
+    bnez    $t0,    trap_from_user
     # b       trap_from_kernel
 
 trap_from_kernel:
