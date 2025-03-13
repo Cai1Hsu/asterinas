@@ -34,6 +34,14 @@ pub fn read_tsc() -> u64 {
     pmc as u64
 }
 
+pub(crate) unsafe fn init_on_ap() {
+    unimplemented!()
+}
+
+pub(crate) fn interrupts_ack(_irq_number: usize) {
+    unimplemented!()
+}
+
 pub(crate) fn enable_cpu_features() {
     // enable float point
     loongArch64::register::euen::set_fpe(true);
