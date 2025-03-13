@@ -3,6 +3,7 @@
 //! Bus operations
 
 pub mod mmio;
+#[cfg(not(target_arch = "loongarch64"))]
 pub mod pci;
 
 /// An error that occurs during bus probing.
