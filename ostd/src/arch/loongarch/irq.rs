@@ -7,6 +7,7 @@ use alloc::vec::Vec;
 use id_alloc::IdAlloc;
 use spin::Once;
 
+use super::trap::TrapFrame;
 use crate::{
     cpu::CpuId,
     sync::{PreemptDisabled, SpinLock, SpinLockGuard},
@@ -43,6 +44,20 @@ impl IrqLine {
     ) -> SpinLockGuard<alloc::vec::Vec<CallbackElement>, PreemptDisabled> {
         todo!()
     }
+
+    /// Register a callback that will be invoked when the IRQ is active.
+    ///
+    /// A handle to the callback is returned. Dropping the handle
+    /// automatically unregisters the callback.
+    ///
+    /// For each IRQ line, multiple callbacks may be registered.
+    pub fn on_active<F>(&self, callback: F) -> IrqCallbackHandle
+    where
+        F: Fn(&TrapFrame) + Sync + Send + 'static,
+    {
+        // TODO
+        IrqCallbackHandle {}
+    }
 }
 
 /// The handle to a registered callback for a IRQ line.
@@ -53,6 +68,12 @@ impl IrqLine {
 pub struct IrqCallbackHandle {}
 
 pub struct CallbackElement {}
+
+impl CallbackElement {
+    pub fn call(&self, _element: &TrapFrame) {
+        // TODO
+    }
+}
 
 pub(crate) fn init() {
     // TODO
