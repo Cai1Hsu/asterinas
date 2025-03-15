@@ -1,5 +1,6 @@
 use core::arch::global_asm;
 
+use loongArch64::register::{ecfg, eentry};
 use ostd_pod::Pod;
 
 global_asm!(include_str!("trap.S"));
@@ -14,7 +15,8 @@ global_asm!(include_str!("trap.S"));
 ///
 /// You **MUST NOT** modify these registers later.
 pub unsafe fn init() {
-    // TODO: set trap vector
+    ecfg::set_vs(0);
+    eentry::set_eentry(trap_entry as usize);
 }
 
 /// Trap frame of kernel interrupt
@@ -173,7 +175,6 @@ impl UserContext {
     }
 }
 
-#[expect(improper_ctypes)]
 extern "C" {
     fn trap_entry();
     fn run_user(ctx: &mut UserContext);
