@@ -32,6 +32,22 @@ _start:
     li.d        $t0, (0x9000000000000000 | 1 | 1 << 4)
     csrwr       $t0, 0x181
 
+    # 4. Configure MMU
+
+    # PTE width: 0 for 8 bytes
+    # 512 entries for each levels of dir/pt
+    # | PTE width | PT base | PT width | Dir1_base    | Dir1_width | Dir2_base      | Dir2_width |
+    # | 0 << 30   | 12      | 9 << 5   | (12+9) << 10 | 9 << 15    | (12+9+9) << 20 | 9 << 25    |
+    li.d        $t0, ((0 << 30) | 12 | (9 << 5) | ((12+9)<<10) | (9<<15) | ((12+9*2)<<20) | (9<<25))
+    csrwr       $t0, 0x1c       # LOONGARCH_CSR_PWCL
+    # | Dir3_base | dir3_width |
+    li.d        $t0, ((12+9*3) | (9<<6))
+    csrwr       $t0, 0x1d       # LOONGARCH_CSR_PWCH
+
+    SET_CSR_BITS 0x10, 24, 29, 12 # TLBIDX
+    SET_CSR_BITS 0x1e,  0,  5, 12 # STLBPS
+    SET_CSR_BITS 0x8e,  0,  5, 12 # TLBREHI
+
     li.d        $t2, 0x000000ffffffffff # PHYS_ADDR_MASK
 
     # 2. Setup temporary tlb refill exception handler
@@ -54,27 +70,6 @@ _start:
 
     st.d        $t1, $t0, 504  # boot_pagetable[511] = phys(boot_pagetable_2nd)
 
-    la.global   $t0, boot_pagetable
-
-    nop
-    nop
-
-    # 4. Configure MMU
-
-    # PTE width: 0 for 8 bytes
-    # 512 entries for each levels of dir/pt
-    # | PTE width | PT base | PT width | Dir1_base    | Dir1_width | Dir2_base      | Dir2_width |
-    # | 0 << 30   | 12      | 9 << 5   | (12+9) << 10 | 9 << 15    | (12+9+9) << 20 | 9 << 25    |
-    li.d        $t0, ((0 << 30) | 12 | (9 << 5) | ((12+9)<<10) | (9<<15) | ((12+9*2)<<20) | (9<<25))
-    csrwr       $t0, 0x1c       # LOONGARCH_CSR_PWCL
-    # | Dir3_base | dir3_width |
-    li.d        $t0, ((12+9*3) | (9<<6))
-    csrwr       $t0, 0x1d       # LOONGARCH_CSR_PWCH
-
-    SET_CSR_BITS 0x10, 24, 29, 12 # TLBIDX
-    SET_CSR_BITS 0x1e,  0,  5, 12 # STLBPS
-    SET_CSR_BITS 0x8e,  0,  5, 12 # TLBREHI
-
     # 5. Enable MMU
     la.global   $t0, boot_pagetable
     and         $t0, $t0, $t2
@@ -84,8 +79,12 @@ _start:
     invtlb      0x00, $zero, $zero
 
     # 6. Enable paging map mode for current mode
-    li.w		$t0, 1 << 4
+    li.w		$t0, 0xb0		# PLV=0, IE=0, PG=1
     csrwr		$t0, 0x0        # LOONGARCH_CSR_CRMD
+    li.w		$t0, 0x00		# PLV=0, PIE=0, PWE=0
+    csrwr		$t0, 0x1        # LOONGARCH_CSR_PRMD
+    li.w		$t0, 0x00		# FPE=0, SXE=0, ASXE=0, BTE=0
+    csrwr		$t0, 0x2        # LOONGARCH_CSR_EUEN
 
     # 7. Clear SAVE0 csr, we identify kernel trap by SAVE0
     li.d        $t0, 0x0
@@ -146,8 +145,11 @@ boot_pagetable:
 
 .globl boot_pagetable_2nd
 boot_pagetable_2nd:
+    .quad 0x00000000 | 0x1c3 # V | D | HUGE | P | W
+    .quad 0x40000000 | 0x1c3 # V | D | HUGE | P | W
     .quad 0x80000000 | 0x1c3 # V | D | HUGE | P | W
-    .zero 8 * 507
+    .quad 0
+    .zero 8 * 504
     # 0x0000_007f_8000_0000 -> 0x0000_0000_8000_0000
     .quad 0x00000000 | 0x1c3 # V | D | HUGE | P | W
     .quad 0x40000000 | 0x1c3 # V | D | HUGE | P | W
