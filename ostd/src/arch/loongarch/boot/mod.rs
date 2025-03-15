@@ -13,7 +13,8 @@ use crate::{
     boot::{
         memory_region::{MemoryRegion, MemoryRegionArray, MemoryRegionType},
         BootloaderAcpiArg, BootloaderFramebufferArg,
-    }, console::early_print, early_println, mm::paddr_to_vaddr
+    },
+    mm::paddr_to_vaddr,
 };
 
 global_asm!(include_str!("boot.S"));
