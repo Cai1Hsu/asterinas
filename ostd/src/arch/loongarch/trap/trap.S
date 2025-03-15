@@ -2,7 +2,7 @@
 
 .section .text
 .global trap_entry
-.balign 4
+.balign 4096
 trap_entry:
     csrwr   $sp,    0x30            # SAVE0, save sp(and load the trap context, for user trap)
     bnez    $sp,    save_context
