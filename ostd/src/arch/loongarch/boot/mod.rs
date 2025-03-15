@@ -13,8 +13,7 @@ use crate::{
     boot::{
         memory_region::{MemoryRegion, MemoryRegionArray, MemoryRegionType},
         BootloaderAcpiArg, BootloaderFramebufferArg,
-    },
-    mm::paddr_to_vaddr,
+    }, console::early_print, early_println, mm::paddr_to_vaddr
 };
 
 global_asm!(include_str!("boot.S"));
@@ -48,10 +47,37 @@ fn parse_memory_regions() -> MemoryRegionArray {
 
     // add memory region
     for region in DEVICE_TREE.get().unwrap().memory().regions() {
+        let region_address = region.starting_address as usize;
         let region_size = region.size.unwrap_or(0);
+
+        let region_address = region_address & 0xffff_ffff;
+        let region_size = region_size & 0xffff_ffff;
+
+        // The dtb qemu generated is(with 2G memory specified):
+        // memory@80000000 {
+        //     device_type = "memory";
+        //     reg = <0x02 0x80000000 0x02 0x70000000>;
+        // };
+        // memory@0 {
+        //     device_type = "memory";
+        //     reg = <0x02 0x00 0x02 0x10000000>;
+        // };
+
+        // But the FDT interprets it as:
+        // memory@80000000 {
+        //     device_type = "memory"
+        //     reg = <0x280000000 0x2f0000000>
+        // };
+
+        // memory@0 {
+        //     device_type = "memory"
+        //     reg = <0x200000000 0x210000000>
+        // };
+        // I don't know what does the 0x02 come from, but ignoring it provides the correct result.
+
         if region_size > 0 {
             regions.push(MemoryRegion::new(
-                region.starting_address as usize,
+                region_address,
                 region_size,
                 MemoryRegionType::Usable,
             ));
