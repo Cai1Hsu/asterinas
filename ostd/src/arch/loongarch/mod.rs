@@ -1,3 +1,4 @@
+pub mod boot;
 pub mod cpu;
 pub mod device;
 pub mod iommu;

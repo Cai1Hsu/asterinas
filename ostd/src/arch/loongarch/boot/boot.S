@@ -1,31 +1,79 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
+.macro SET_CSR_BITS CSR_ID, bits_start, bits_end, value
+    csrrd      $t0, \CSR_ID
+
+    li.d       $t2, (1 << (\bits_end - \bits_start + 1)) - 1
+    slli.d     $t2, $t2, \bits_start
+
+    and        $t0, $t0, $t2
+
+    li.d       $t1, \value
+    slli.d     $t1, $t1, \bits_start
+
+    # for safety consideration
+    and        $t0, $t0, $t2
+
+    or         $t0, $t0, $t1
+
+    csrwr      $t0, \CSR_ID
+.endm
+
 .section .text.entry
 .globl _start
 _start:
-    # 1. Setup DMWIN, REMOVED
-    # probably unnecessary as we do not use DMWIN, we uses paging map
+    # 1. Setup DMWIN
 
-    # 2.0 Setup stack pointer(temporary value, used for calling setup_tlb)
-    la.global   $sp, boot_stack_top
+    # Configure DMW0. VSEG = 8, PLV0, Strongly ordered uncachd
+    li.d        $t0, (0x8000000000000000 | 1)
+    csrwr       $t0, 0x180
 
-    # 2.1 Setup TLB
-    bl          setup_tlb
+    # Configure DMW1. VSEG = 9, PLV0, Coherent cached
+    li.d        $t0, (0x9000000000000000 | 1 | 1 << 4)
+    csrwr       $t0, 0x181
 
-    li.d        $t2, 0x0000ffffffffffff # PHYS_ADDR_MASK
+    li.d        $t2, 0x000000ffffffffff # PHYS_ADDR_MASK
 
-    # 3. Setup tlb refill exception handler
-    la.global   $t0, handle_tlb_refill
+    # 2. Setup temporary tlb refill exception handler
+    # According to loongarch reference manual, this must be a physical address and 4k aligned
+    la.global   $t0, tmp_tlb_refill
     and         $t0, $t0, $t2
     csrwr       $t0, 0x88       # LOONGARCH_CSR_TLBRENTRY
 
-    # 4. Setup boot_pagetable
+    # 3. Setup boot_pagetable
     la.global   $t0, boot_pagetable
     la.global   $t1, boot_pagetable_2nd
     and         $t1, $t1, $t2
     st.d        $t1, $t0, 0     # boot_pagetable[0] = phys(boot_pagetable_2nd)
-    addi.d      $t0, $t0, 2047
-    st.d        $t1, $t0, 2041  # boot_pagetable[511] = phys(boot_pagetable_2nd)
+
+    addi.d      $t0, $t0, 2040
+    st.d        $t1, $t0, 8  # boot_pagetable[256] = phys(boot_pagetable_2nd)
+
+    addi.d      $t0, $t0, 1544
+    st.d        $t1, $t0, 0 # boot_pagetable[448] = phys(boot_pagetable_2nd)
+
+    st.d        $t1, $t0, 504  # boot_pagetable[511] = phys(boot_pagetable_2nd)
+
+    la.global   $t0, boot_pagetable
+
+    nop
+    nop
+
+    # 4. Configure MMU
+
+    # PTE width: 0 for 8 bytes
+    # 512 entries for each levels of dir/pt
+    # | PTE width | PT base | PT width | Dir1_base    | Dir1_width | Dir2_base      | Dir2_width |
+    # | 0 << 30   | 12      | 9 << 5   | (12+9) << 10 | 9 << 15    | (12+9+9) << 20 | 9 << 25    |
+    li.d        $t0, ((0 << 30) | 12 | (9 << 5) | ((12+9)<<10) | (9<<15) | ((12+9*2)<<20) | (9<<25))
+    csrwr       $t0, 0x1c       # LOONGARCH_CSR_PWCL
+    # | Dir3_base | dir3_width |
+    li.d        $t0, ((12+9*3) | (9<<6))
+    csrwr       $t0, 0x1d       # LOONGARCH_CSR_PWCH
+
+    SET_CSR_BITS 0x10, 24, 29, 12 # TLBIDX
+    SET_CSR_BITS 0x1e,  0,  5, 12 # STLBPS
+    SET_CSR_BITS 0x8e,  0,  5, 12 # TLBREHI
 
     # 5. Enable MMU
     la.global   $t0, boot_pagetable
@@ -33,29 +81,45 @@ _start:
     csrwr       $t0, 0x1a       # LOONGARCH_CSR_PGDH
     ori         $t0, $zero, 0x0
     csrwr       $t0, 0x19       # LOONGARCH_CSR_PGDL
-    invtlb      0x00, $r0, $r0
+    invtlb      0x00, $zero, $zero
 
-    # 6. Enable PG, TODO
+    # 6. Enable paging map mode for current mode
+    li.w		$t0, 1 << 4
+    csrwr		$t0, 0x0        # LOONGARCH_CSR_CRMD
 
-    li.d        $t1, 0xffffffff00000000 # VIRT_ADDR_OFFSET
+    # 7. Clear SAVE0 csr, we identify kernel trap by SAVE0
+    li.d        $t0, 0x0
+    csrwr       $t0, 0x30       # LOONGARCH_CSR_SAVE0
 
-    # 7. Set up stack pointer
-    or          $sp, $sp, $t1
+    # li.d        $t1, 0xffffffff00000000 # VIRT_ADDR_OFFSET
 
-    # 8. Read cpuid and fdt_base
+    # 8. Set up stack pointer
+    la.global   $sp, boot_stack_top
+    # or          $sp, $sp, $t1
+
+    # 9. Read cpuid and fdt_base
     csrrd       $a0, 0x20       # cpuid
     li.d        $a1, 0x100000   # FDT_BASE
 
-    # 9. jump to loongarch_main
-    la.global   $t0, loongarch_main
-    or          $t0, $t0, $t1
+    # 10. jump to loongarch_boot
+    la.global   $t0, loongarch_boot
+    # or          $t0, $t0, $t1
     jirl        $zero, $t0, 0
 
 .section .text
 .balign 4096
-.global handle_tlb_refill
-handle_tlb_refill:
-    # TODO
+.global tmp_tlb_refill
+tmp_tlb_refill:
+    csrwr   $t0, 0x8b               # LA_CSR_TLBRSAVE, KScratch for TLB refill exception
+    csrrd   $t0, 0x1b               # LA_CSR_PGD, Page table base
+    lddir   $t0, $t0, 3
+    lddir   $t0, $t0, 2
+    lddir   $t0, $t0, 1
+    ldpte   $t0, 0
+    ldpte   $t0, 1
+    tlbfill
+    csrrd   $t0, 0x8b               # LA_CSR_TLBRSAVE
+    ertn
 
 .section .bss.stack
 
@@ -71,13 +135,19 @@ boot_stack_top:
 .align 12
 .globl boot_pagetable
 boot_pagetable:
-    .zero 8 * 511
+    .quad 0 # [0] To be assigned with phys(boot_pagetable_2nd)
+    .zero 8 * 255
+    .quad 0 # [256] To be assigned with phys(boot_pagetable_2nd)
+    .zero 8 * 191
+    .quad 0 # [448] To be assigned with phys(boot_pagetable_2nd)
+    .zero 8 * 62
     # 0x0000_ff80_0000_0000 -> 0x0000_0000_0000_0000
     .quad 0 # To be assigned with phys(boot_pagetable_2nd)
 
 .globl boot_pagetable_2nd
 boot_pagetable_2nd:
-    .zero 8 * 508
+    .quad 0x80000000 | 0x1c3 # V | D | HUGE | P | W
+    .zero 8 * 507
     # 0x0000_007f_8000_0000 -> 0x0000_0000_8000_0000
     .quad 0x00000000 | 0x1c3 # V | D | HUGE | P | W
     .quad 0x40000000 | 0x1c3 # V | D | HUGE | P | W
