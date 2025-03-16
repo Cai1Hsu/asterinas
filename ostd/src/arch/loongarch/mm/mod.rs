@@ -132,12 +132,14 @@ impl PageTableEntryTrait for PageTableEntry {
         prop: crate::mm::PageProperty,
     ) -> Self {
         let mut pte = Self::new_paddr(paddr);
-        pte.set_prop(prop);
 
         if level > 1 {
             pte = Self(pte.0 | PageTableFlags::GLOBAL_OR_HUGE.bits());
         }
 
+        pte = Self(pte.0 | PageTableFlags::VALID.bits());
+
+        pte.set_prop(prop);
         pte
     }
 
