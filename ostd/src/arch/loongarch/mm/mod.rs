@@ -238,11 +238,15 @@ impl Debug for PageTableEntry {
 pub unsafe fn activate_page_table(root_paddr: Paddr, _root_pt_cache: CachePolicy) {
     assert!(root_paddr % PagingConsts::BASE_PAGE_SIZE == 0);
 
-    loongArch64::register::pgdl::set_base(root_paddr);
+    loongArch64::register::pgdh::set_base(root_paddr);
 }
 
 pub fn current_page_table_paddr() -> Paddr {
-    loongArch64::register::pgdl::read().raw()
+    // TODO: we return pgdh for now because the boot page table initialization
+    // uses this function. We should change this once we have a better way to
+    // get the boot page table.
+    // Same as above for activate_page_table.
+    loongArch64::register::pgdh::read().raw()
 }
 
 pub(crate) fn __memcpy_fallible(dst: *mut u8, src: *const u8, size: usize) -> usize {
