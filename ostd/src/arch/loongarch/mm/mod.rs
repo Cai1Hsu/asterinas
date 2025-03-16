@@ -191,15 +191,11 @@ impl PageTableEntryTrait for PageTableEntry {
         }
 
         let flags = PageTableFlags::VALID.bits()
+            | PageTableFlags::PHYSICAL.bits()
+            | PageTableFlags::DIRTY.bits()
             | parse_flags!(!prop.flags.bits(), PageFlags::R, PageTableFlags::NO_READ)
             | parse_flags!(prop.flags.bits(), PageFlags::W, PageTableFlags::WRITABLE)
             | parse_flags!(!prop.flags.bits(), PageFlags::X, PageTableFlags::NO_EXECUTE)
-            | parse_flags!(prop.flags.bits(), PageFlags::DIRTY, PageTableFlags::DIRTY)
-            | parse_flags!(
-                prop.flags.bits(),
-                PageFlags::ACCESSED,
-                PageTableFlags::DIRTY
-            )
             | parse_flags!(
                 prop.priv_flags.bits(),
                 PrivFlags::USER,
