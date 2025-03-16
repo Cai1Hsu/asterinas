@@ -112,7 +112,6 @@ impl PodOnce for PageTableEntry {}
 
 impl PageTableEntry {
     const PHYS_ADDR_MASK: usize = 0x0000_ffff_ffff_f000;
-    const PROP_MASK: usize = !Self::PHYS_ADDR_MASK | PageTableFlags::GLOBAL.bits();
 
     fn new_paddr(paddr: Paddr) -> Self {
         Self(paddr & Self::PHYS_ADDR_MASK)
@@ -209,7 +208,7 @@ impl PageTableEntryTrait for PageTableEntry {
             );
         // TODO: handle global flag
 
-        self.0 = self.0 & !Self::PROP_MASK | flags;
+        self.0 = self.0 & Self::PHYS_ADDR_MASK | flags;
     }
 
     fn is_last(&self, level: PagingLevel) -> bool {
