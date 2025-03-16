@@ -68,9 +68,15 @@ const ADDR_WIDTH_SHIFT: isize = PagingConsts::ADDRESS_WIDTH as isize - 48;
 
 /// Start of the kernel address space.
 /// This is the _lowest_ address of the x86-64's _high_ canonical addresses.
+#[cfg(not(target_arch = "loongarch64"))]
 pub const KERNEL_BASE_VADDR: Vaddr = 0xffff_8000_0000_0000 << ADDR_WIDTH_SHIFT;
+#[cfg(target_arch = "loongarch64")]
+pub const KERNEL_BASE_VADDR: Vaddr = 0x9000_0000_0000_0000 << ADDR_WIDTH_SHIFT;
 /// End of the kernel address space (non inclusive).
+#[cfg(not(target_arch = "loongarch64"))]
 pub const KERNEL_END_VADDR: Vaddr = 0xffff_ffff_ffff_0000 << ADDR_WIDTH_SHIFT;
+#[cfg(target_arch = "loongarch64")]
+pub const KERNEL_END_VADDR: Vaddr = 0x9000_ffff_ffff_0000 << ADDR_WIDTH_SHIFT;
 
 /// The kernel code is linear mapped to this address.
 ///
@@ -102,8 +108,18 @@ pub const VMALLOC_VADDR_RANGE: Range<Vaddr> = VMALLOC_BASE_VADDR..TRACKED_MAPPED
 
 /// The base address of the linear mapping of all physical
 /// memory in the kernel address space.
+#[cfg(not(target_arch = "loongarch64"))]
 pub const LINEAR_MAPPING_BASE_VADDR: Vaddr = 0xffff_8000_0000_0000 << ADDR_WIDTH_SHIFT;
+#[cfg(not(target_arch = "loongarch64"))]
 pub const LINEAR_MAPPING_VADDR_RANGE: Range<Vaddr> = LINEAR_MAPPING_BASE_VADDR..VMALLOC_BASE_VADDR;
+
+#[cfg(target_arch = "loongarch64")]
+/// The base address of the linear mapping of all physical
+/// memory in the kernel address space.
+pub const LINEAR_MAPPING_BASE_VADDR: Vaddr = 0x9000_0000_0000_0000;
+#[cfg(target_arch = "loongarch64")]
+pub const LINEAR_MAPPING_VADDR_RANGE: Range<Vaddr> =
+    LINEAR_MAPPING_BASE_VADDR..LINEAR_MAPPING_BASE_VADDR + (1 << PagingConsts::ADDRESS_WIDTH);
 
 /// Convert physical address to virtual address using offset, only available inside `ostd`
 pub fn paddr_to_vaddr(pa: Paddr) -> usize {
@@ -149,6 +165,7 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
     }
 
     // Do linear mappings for the kernel.
+    #[cfg(not(target_arch = "loongarch64"))] // We use DMWIN in loongarch for now, so mapping these is unnecessary.
     {
         let from = LINEAR_MAPPING_BASE_VADDR..LINEAR_MAPPING_BASE_VADDR + phys_mem_cap;
         let to = 0..phys_mem_cap;
@@ -184,6 +201,7 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
     // Map for the I/O area.
     // TODO: we need to have an allocator to allocate kernel space for
     // the I/O areas, rather than doing it using the linear mappings.
+    #[cfg(not(target_arch = "loongarch64"))] // same as above
     {
         let to = 0x8_0000_0000..0x9_0000_0000;
         let from = LINEAR_MAPPING_BASE_VADDR + to.start..LINEAR_MAPPING_BASE_VADDR + to.end;
@@ -200,6 +218,7 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
 
     // Map for the kernel code itself.
     // TODO: set separated permissions for each segments in the kernel.
+    #[cfg(not(target_arch = "loongarch64"))] // same as above
     {
         let region = regions
             .iter()
