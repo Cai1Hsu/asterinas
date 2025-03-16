@@ -20,7 +20,10 @@ pub(crate) static IRQ_LIST: Once<Vec<IrqLine>> = Once::new();
 
 /// An interrupt request (IRQ) line.
 #[derive(Debug)]
-pub(crate) struct IrqLine {}
+pub(crate) struct IrqLine {
+    pub(crate) irq_num: u8,
+    pub(crate) callback_list: SpinLock<Vec<CallbackElement>>,
+}
 
 impl IrqLine {
     /// Acquire an interrupt request line.
@@ -30,19 +33,19 @@ impl IrqLine {
     /// This function is marked unsafe as manipulating interrupt lines is
     /// considered a dangerous operation.
     #[expect(clippy::redundant_allocation)]
-    pub unsafe fn acquire(_irq_num: u8) -> alloc::sync::Arc<&'static Self> {
-        todo!()
+    pub unsafe fn acquire(irq_num: u8) -> alloc::sync::Arc<&'static Self> {
+        alloc::sync::Arc::new(IRQ_LIST.get().unwrap().get(irq_num as usize).unwrap())
     }
 
     /// Get the IRQ number.
     pub fn num(&self) -> u8 {
-        todo!()
+        self.irq_num
     }
 
     pub fn callback_list(
         &self,
     ) -> SpinLockGuard<alloc::vec::Vec<CallbackElement>, PreemptDisabled> {
-        todo!()
+        self.callback_list.lock()
     }
 
     /// Register a callback that will be invoked when the IRQ is active.
@@ -67,6 +70,7 @@ impl IrqLine {
 #[derive(Debug)]
 pub struct IrqCallbackHandle {}
 
+#[derive(Debug)]
 pub struct CallbackElement {}
 
 impl CallbackElement {
@@ -76,7 +80,15 @@ impl CallbackElement {
 }
 
 pub(crate) fn init() {
-    // TODO
+    let mut list: Vec<IrqLine> = Vec::new();
+    for i in 0..256 {
+        list.push(IrqLine {
+            irq_num: i as u8,
+            callback_list: SpinLock::new(Vec::new()),
+        });
+    }
+    IRQ_LIST.call_once(|| list);
+    IRQ_ALLOCATOR.call_once(|| SpinLock::new(IdAlloc::with_capacity(256)));
 }
 
 pub(crate) fn enable_local() {
