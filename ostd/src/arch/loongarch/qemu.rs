@@ -14,8 +14,7 @@ pub enum QemuExitCode {
 }
 
 /// Exit QEMU with the given exit code.
-pub fn exit_qemu(exit_code: QemuExitCode) -> ! {
-    log::debug!("exit qemu with exit code {exit_code:?}");
+pub fn exit_qemu(_exit_code: QemuExitCode) -> ! {
     let port = unsafe { MemPort::<u8, WriteOnlyAccess>::new(0x100e001c) };
 
     port.write(0x34);
