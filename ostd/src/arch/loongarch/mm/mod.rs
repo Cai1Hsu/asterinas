@@ -120,7 +120,10 @@ impl PageTableEntry {
 
 impl PageTableEntryTrait for PageTableEntry {
     fn is_present(&self) -> bool {
-        self.0 & PageTableFlags::VALID.bits() != 0
+        let paddr = self.paddr();
+        let flags = self.0 & (!Self::PHYS_ADDR_MASK);
+
+        paddr != 0 && (flags == 0 || (flags & PageTableFlags::VALID.bits() != 0))
     }
 
     fn new_page(
@@ -180,7 +183,8 @@ impl PageTableEntryTrait for PageTableEntry {
     }
 
     fn set_prop(&mut self, prop: PageProperty) {
-        if !self.is_present() {
+        // skips if the entry that points to a sub page table
+        if !self.is_present() || self.0 & (!Self::PHYS_ADDR_MASK) == 0 {
             // According to the interface of `PageTableEntryTrait`,
             // setting the property of a non-present entry is a no-op.
             return;
