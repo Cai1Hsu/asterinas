@@ -26,6 +26,23 @@ pub fn is_kernel_interrupted() -> bool {
 
 /// Handle traps (only from kernel).
 #[no_mangle]
-extern "C" fn trap_handler(_f: &mut TrapFrame) {
-    todo!()
+extern "C" fn trap_handler(f: &mut TrapFrame) {
+    use loongArch64::register::estat::Trap;
+    use loongArch64::register::badv;
+
+    match loongArch64::register::estat::read().cause() {
+        Trap::Interrupt(_) => {
+            IS_KERNEL_INTERRUPTED.store(true);
+            todo!();
+            IS_KERNEL_INTERRUPTED.store(false);
+        }
+        Trap::Exception(e) => {
+            let badv = badv::read().vaddr();
+
+            panic!(
+                "Cannot handle kernel cpu exception: {e:?}. badv: {badv:#x}, trapframe: {f:#x?}.",
+            );
+        }
+        _ => todo!(),
+    }
 }
