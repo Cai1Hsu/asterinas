@@ -68,8 +68,14 @@ pub struct CpuExceptionInfo {
 
 impl Default for UserContext {
     fn default() -> Self {
+        const PPLV_UMODE: usize = 0b11;
+        const PIE: usize = 1 << 2;
+
         UserContext {
-            user_context: RawUserContext::default(),
+            user_context: RawUserContext {
+                prmd: PPLV_UMODE | PIE,
+                ..RawUserContext::default()
+            },
             trap: Trap::Exception(Exception::Breakpoint),
             fpu_state: FpuState {},
             cpu_exception_info: CpuExceptionInfo::default(),
