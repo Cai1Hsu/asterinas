@@ -101,7 +101,7 @@ pub(crate) fn disable_local() {
 
 pub(crate) fn is_local_enabled() -> bool {
     // TODO
-    false
+    true
 }
 
 /// Sends a general inter-processor interrupt (IPI) to the specified CPU.
