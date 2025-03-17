@@ -8,6 +8,7 @@ trap_entry:
     bnez    $sp,    save_context
 
 .begin_trap_from_kernel:
+    csrrd   $sp,    0x30
     addi.d  $sp,    $sp, -35*8      # allocate stack space for kernel trap frame
 
 save_context:
