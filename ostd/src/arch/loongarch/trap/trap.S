@@ -85,15 +85,16 @@ trap_from_user:
     ld.d    $s7,    $sp, 9*8
     ld.d    $s8,    $sp, 10*8
     ld.d    $ra,    $sp, 11*8
+    ld.d    $r21,   $sp, 12*8
 
-    addi.d   $sp,    $sp, 12*8
+    addi.d   $sp,    $sp, 13*8
 
     ret
 
 .global run_user
 .balign 4
 run_user: # (ctx: &mut UserContext)
-    addi.d  $sp,    $sp, -12*8
+    addi.d  $sp,    $sp, -13*8
     st.d    $sp,    $sp, 0*8    # zero was used to save kernel sp
     st.d    $fp,    $sp, 1*8
     st.d    $s0,    $sp, 2*8
@@ -106,11 +107,13 @@ run_user: # (ctx: &mut UserContext)
     st.d    $s7,    $sp, 9*8
     st.d    $s8,    $sp, 10*8
     st.d    $ra,    $sp, 11*8
+    st.d    $r21,   $sp, 12*8
 
     move    $t0,    $sp
     move    $sp,    $a0
     st.d    $t0,    $sp, 0*8
     csrwr   $sp,    0x30            # SAVE0
+    csrrd   $sp,    0x30
 
 trap_return:
     ld.d    $t0,    $sp, 33*8       # ERA
