@@ -240,6 +240,7 @@ pub unsafe fn activate_page_table(root_paddr: Paddr, _root_pt_cache: CachePolicy
     assert!(root_paddr % PagingConsts::BASE_PAGE_SIZE == 0);
 
     loongArch64::register::pgdh::set_base(root_paddr);
+    loongArch64::register::pgdl::set_base(root_paddr);
 }
 
 pub fn current_page_table_paddr() -> Paddr {
