@@ -91,6 +91,7 @@ trap_from_user:
     ret
 
 .global run_user
+.balign 4
 run_user: # (ctx: &mut UserContext)
     addi.d  $sp,    $sp, -12*8
     st.d    $sp,    $sp, 0*8    # zero was used to save kernel sp
