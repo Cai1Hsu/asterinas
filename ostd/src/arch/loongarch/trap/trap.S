@@ -59,6 +59,9 @@ save_context:
     csrrd   $t0,    0x30            # SAVE0
     st.d    $t0,    $sp, 3*8
 
+    li.d    $t0,    0x0             # clear SAVE0, indicating that the next trap is from kernel
+    csrwr   $t0,    0x30
+
     csrrd   $t0,    0x1             # PRMD
     andi    $t0,    $t0, 0b11       # extract PPLV field
     bnez    $t0,    trap_from_user
@@ -67,8 +70,6 @@ save_context:
 trap_from_kernel:
     move    $a0,    $sp             # trap frame as first argument
     bl      trap_handler
-    li.d    $t0,    0x0             # clear SAVE0, indicating that the next trap is from kernel
-    csrwr   $t0,    0x30
     b       trap_return
 
 trap_from_user:
