@@ -5,5 +5,6 @@
 pub mod boot;
 pub mod device;
 pub mod iommu;
+pub(crate) mod irq;
 pub mod qemu;
 pub mod serial;
