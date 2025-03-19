@@ -83,8 +83,6 @@ _start:
     csrwr		$t0, 0x0        # LOONGARCH_CSR_CRMD
     li.w		$t0, 0x00		# PLV=0, PIE=0, PWE=0
     csrwr		$t0, 0x1        # LOONGARCH_CSR_PRMD
-    li.w		$t0, 0x00		# FPE=0, SXE=0, ASXE=0, BTE=0
-    csrwr		$t0, 0x2        # LOONGARCH_CSR_EUEN
 
     # 7. Clear SAVE0 csr, we identify kernel trap by SAVE0
     li.d        $t0, 0x0
