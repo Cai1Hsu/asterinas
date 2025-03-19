@@ -12,3 +12,4 @@ pub mod qemu;
 pub mod serial;
 pub mod task;
 pub mod timer;
+pub mod trap;
