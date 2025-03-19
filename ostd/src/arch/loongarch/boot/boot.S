@@ -134,14 +134,11 @@ boot_stack_top:
 .align 12
 .globl boot_pagetable
 boot_pagetable:
-    .quad 0 # [0] To be assigned with phys(boot_pagetable_2nd)
-    .zero 8 * 255
+    .zero 8 * 256
     .quad 0 # [256] To be assigned with phys(boot_pagetable_2nd)
     .zero 8 * 191
     .quad 0 # [448] To be assigned with phys(boot_pagetable_2nd)
-    .zero 8 * 62
-    # 0x0000_ff80_0000_0000 -> 0x0000_0000_0000_0000
-    .quad 0 # To be assigned with phys(boot_pagetable_2nd)
+    .zero 8 * 63
 
 .globl boot_pagetable_2nd
 boot_pagetable_2nd:
