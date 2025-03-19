@@ -2,6 +2,8 @@
 
 //! Platform-specific code for the LoongArch platform.
 
+use core::sync::atomic::Ordering;
+
 pub mod boot;
 pub mod cpu;
 pub mod device;
@@ -18,4 +20,21 @@ pub mod trap;
 #[cfg(feature = "cvm_guest")]
 pub(crate) fn init_cvm_guest() {
     // Unimplemented, no-op
+}
+
+/// Return the frequency of TSC. The unit is Hz.
+pub fn tsc_freq() -> u64 {
+    timer::TIMEBASE_FREQ.load(Ordering::Relaxed)
+}
+
+/// Reads the current value of the processor’s time-stamp counter (TSC).
+pub fn read_tsc() -> u64 {
+    let mut pmc: usize;
+    unsafe {
+        core::arch::asm!(
+            "rdtime.d {}, $zero",
+            out(reg) pmc,
+        );
+    }
+    pmc as u64
 }
