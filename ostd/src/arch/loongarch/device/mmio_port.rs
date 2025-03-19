@@ -9,14 +9,14 @@ const UNCACHED_WINDOW_OFFSET: usize = 0x8000_0000_0000_0000;
 pub struct WriteOnlyAccess;
 pub struct ReadWriteAccess;
 
-pub trait MemPortWriteAccess {}
-pub trait MemPortReadAccess {}
+pub trait MmioPortWriteAccess {}
+pub trait MmioPortReadAccess {}
 
-impl MemPortWriteAccess for WriteOnlyAccess {}
-impl MemPortWriteAccess for ReadWriteAccess {}
-impl MemPortReadAccess for ReadWriteAccess {}
+impl MmioPortWriteAccess for WriteOnlyAccess {}
+impl MmioPortWriteAccess for ReadWriteAccess {}
+impl MmioPortReadAccess for ReadWriteAccess {}
 
-pub trait MemPortRead: Sized {
+pub trait MmioPortRead: Sized {
     fn read_from_port(address_base: usize) -> Self {
         let port = NonNull::new((address_base | UNCACHED_WINDOW_OFFSET) as *mut Self).unwrap();
 
@@ -24,7 +24,7 @@ pub trait MemPortRead: Sized {
     }
 }
 
-pub trait MemPortWrite: Sized {
+pub trait MmioPortWrite: Sized {
     fn write_to_port(address_base: usize, value: Self) {
         let port = NonNull::new((address_base | UNCACHED_WINDOW_OFFSET) as *mut Self).unwrap();
 
@@ -32,13 +32,13 @@ pub trait MemPortWrite: Sized {
     }
 }
 
-pub struct MemPort<T, A> {
+pub struct MmioPort<T, A> {
     address_base: usize,
     value_marker: PhantomData<T>,
     access_marker: PhantomData<A>,
 }
 
-impl<T, A> MemPort<T, A> {
+impl<T, A> MmioPort<T, A> {
     /// Creates an I/O port.
     ///
     /// # Safety
@@ -54,7 +54,7 @@ impl<T, A> MemPort<T, A> {
     }
 }
 
-impl<T: MemPortRead, A: MemPortReadAccess> MemPort<T, A> {
+impl<T: MmioPortRead, A: MmioPortReadAccess> MmioPort<T, A> {
     /// Reads from the I/O port
     #[inline]
     pub fn read(&self) -> T {
@@ -62,7 +62,7 @@ impl<T: MemPortRead, A: MemPortReadAccess> MemPort<T, A> {
     }
 }
 
-impl<T: MemPortWrite, A: MemPortWriteAccess> MemPort<T, A> {
+impl<T: MmioPortWrite, A: MmioPortWriteAccess> MmioPort<T, A> {
     /// Writes to the I/O port
     #[inline]
     pub fn write(&self, value: T) {
@@ -70,10 +70,10 @@ impl<T: MemPortWrite, A: MemPortWriteAccess> MemPort<T, A> {
     }
 }
 
-impl MemPortRead for u8 {}
-impl MemPortWrite for u8 {}
-impl MemPortRead for u16 {}
-impl MemPortWrite for u16 {}
-impl MemPortRead for u32 {}
-impl MemPortWrite for u32 {}
+impl MmioPortRead for u8 {}
+impl MmioPortWrite for u8 {}
+impl MmioPortRead for u16 {}
+impl MmioPortWrite for u16 {}
+impl MmioPortRead for u32 {}
+impl MmioPortWrite for u32 {}
 

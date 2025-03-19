@@ -1,4 +1,4 @@
-use super::mem_port::{MemPort, ReadWriteAccess, WriteOnlyAccess};
+use super::mmio_port::{MmioPort, ReadWriteAccess, WriteOnlyAccess};
 
 /// A serial port.
 ///
@@ -6,30 +6,30 @@ use super::mem_port::{MemPort, ReadWriteAccess, WriteOnlyAccess};
 /// Ref: <https://wiki.osdev.org/Serial_Ports>
 pub struct SerialPort {
     /// Data Register
-    data: MemPort<u8, ReadWriteAccess>,
+    data: MmioPort<u8, ReadWriteAccess>,
     /// Interrupt Enable Register
-    int_en: MemPort<u8, WriteOnlyAccess>,
+    int_en: MmioPort<u8, WriteOnlyAccess>,
     /// First In First Out Control Register
-    fifo_ctrl: MemPort<u8, WriteOnlyAccess>,
+    fifo_ctrl: MmioPort<u8, WriteOnlyAccess>,
     /// Line control Register
-    line_ctrl: MemPort<u8, WriteOnlyAccess>,
+    line_ctrl: MmioPort<u8, WriteOnlyAccess>,
     /// Modem Control Register
-    modem_ctrl: MemPort<u8, WriteOnlyAccess>,
+    modem_ctrl: MmioPort<u8, WriteOnlyAccess>,
     /// Line status Register
-    line_status: MemPort<u8, ReadWriteAccess>,
+    line_status: MmioPort<u8, ReadWriteAccess>,
     /// Modem Status Register
-    modem_status: MemPort<u8, ReadWriteAccess>,
+    modem_status: MmioPort<u8, ReadWriteAccess>,
 }
 
 impl SerialPort {
     pub const unsafe fn new(uart_base: usize) -> Self {
-        let data = MemPort::new(uart_base);
-        let int_en = MemPort::new(uart_base + 1);
-        let fifo_ctrl = MemPort::new(uart_base + 2);
-        let line_ctrl = MemPort::new(uart_base + 3);
-        let modem_ctrl = MemPort::new(uart_base + 4);
-        let line_status = MemPort::new(uart_base + 5);
-        let modem_status = MemPort::new(uart_base + 6);
+        let data = MmioPort::new(uart_base);
+        let int_en = MmioPort::new(uart_base + 1);
+        let fifo_ctrl = MmioPort::new(uart_base + 2);
+        let line_ctrl = MmioPort::new(uart_base + 3);
+        let modem_ctrl = MmioPort::new(uart_base + 4);
+        let line_status = MmioPort::new(uart_base + 5);
+        let modem_status = MmioPort::new(uart_base + 6);
 
         Self {
             data,

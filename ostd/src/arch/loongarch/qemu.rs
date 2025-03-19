@@ -2,7 +2,7 @@
 
 //! Providing the ability to exit QEMU and return a value as debug result.
 
-use crate::arch::device::mem_port::{MemPort, WriteOnlyAccess};
+use crate::arch::device::mmio_port::{MmioPort, WriteOnlyAccess};
 
 /// The exit code of QEMU.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,7 +15,7 @@ pub enum QemuExitCode {
 
 /// Exit QEMU with the given exit code.
 pub fn exit_qemu(_exit_code: QemuExitCode) -> ! {
-    let port = unsafe { MemPort::<u8, WriteOnlyAccess>::new(0x100e001c) };
+    let port = unsafe { MmioPort::<u8, WriteOnlyAccess>::new(0x100e001c) };
 
     port.write(0x34);
 
