@@ -64,9 +64,6 @@ _start:
     addi.d      $t0, $t0, 2040
     st.d        $t1, $t0, 8  # boot_pagetable[256] = phys(boot_pagetable_2nd)
 
-    addi.d      $t0, $t0, 1544
-    st.d        $t1, $t0, 0 # boot_pagetable[448] = phys(boot_pagetable_2nd)
-
     # 5. Enable MMU
     la.global   $t0, boot_pagetable
     and         $t0, $t0, $t2
