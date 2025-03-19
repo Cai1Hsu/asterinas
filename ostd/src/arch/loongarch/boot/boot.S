@@ -74,11 +74,8 @@ _start:
     li.d        $t0, 0x0
     csrwr       $t0, 0x30       # LOONGARCH_CSR_SAVE0
 
-    # li.d        $t1, 0xffffffff00000000 # VIRT_ADDR_OFFSET
-
     # 8. Set up stack pointer
     la.global   $sp, boot_stack_top
-    # or          $sp, $sp, $t1
 
     # 9. Read cpuid and fdt_base
     csrrd       $a0, 0x20       # cpuid
@@ -86,22 +83,22 @@ _start:
 
     # 10. jump to loongarch_boot
     la.global   $t0, loongarch_boot
-    # or          $t0, $t0, $t1
     jirl        $zero, $t0, 0
 
 .section .text
 .balign 4096
 .global tmp_tlb_refill
 tmp_tlb_refill:
-    csrwr   $t0, 0x8b               # LA_CSR_TLBRSAVE, KScratch for TLB refill exception
-    csrrd   $t0, 0x1b               # LA_CSR_PGD, Page table base
+    csrwr   $t0, 0x8b
+    csrrd   $t0, 0x1b
     lddir   $t0, $t0, 3
     lddir   $t0, $t0, 2
     lddir   $t0, $t0, 1
     ldpte   $t0, 0
     ldpte   $t0, 1
     tlbfill
-    csrrd   $t0, 0x8b               # LA_CSR_TLBRSAVE
+    li.d    $t0, 0x0
+    csrwr   $t0, 0x8b
     ertn
 
 .section .bss.stack
@@ -118,8 +115,5 @@ boot_stack_top:
 .align 12
 .globl boot_pagetable
 boot_pagetable:
-    .zero 8 * 256
-    .quad 0 # [256] To be assigned with phys(boot_pagetable_2nd)
-    .zero 8 * 191
-    .quad 0 # [448] To be assigned with phys(boot_pagetable_2nd)
-    .zero 8 * 63
+    .zero 8 * 511
+    .quad 0
