@@ -10,6 +10,8 @@ cfg_if::cfg_if! {
         pub use crate::arch::x86::cpu::*;
     } else if #[cfg(target_arch = "riscv64")] {
         pub use crate::arch::riscv::cpu::*;
+    } else if #[cfg(target_arch = "loongarch64")] {
+        pub use crate::arch::loongarch::cpu::*;
     }
 }
 
