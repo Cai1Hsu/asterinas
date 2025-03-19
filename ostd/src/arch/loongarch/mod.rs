@@ -14,3 +14,8 @@ pub mod serial;
 pub mod task;
 pub mod timer;
 pub mod trap;
+
+#[cfg(feature = "cvm_guest")]
+pub(crate) fn init_cvm_guest() {
+    // Unimplemented, no-op
+}
