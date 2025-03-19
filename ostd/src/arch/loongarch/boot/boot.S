@@ -149,9 +149,4 @@ boot_pagetable_2nd:
     .quad 0x40000000 | 0x1c3 # V | D | HUGE | P | W
     .quad 0x80000000 | 0x1c3 # V | D | HUGE | P | W
     .quad 0
-    .zero 8 * 504
-    # 0x0000_007f_8000_0000 -> 0x0000_0000_8000_0000
-    .quad 0x00000000 | 0x1c3 # V | D | HUGE | P | W
-    .quad 0x40000000 | 0x1c3 # V | D | HUGE | P | W
-    .quad 0x80000000 | 0x1c3 # V | D | HUGE | P | W
-    .quad 0
+    .zero 8 * 508
