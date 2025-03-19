@@ -3,3 +3,4 @@
 //! Platform-specific code for the LoongArch platform.
 
 pub mod boot;
+pub mod iommu;
