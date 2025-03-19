@@ -5,3 +5,4 @@
 pub mod boot;
 pub mod device;
 pub mod iommu;
+pub mod serial;
