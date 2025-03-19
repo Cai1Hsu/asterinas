@@ -56,14 +56,6 @@ _start:
     and         $t0, $t0, $t2
     csrwr       $t0, 0x88       # LOONGARCH_CSR_TLBRENTRY
 
-    # 3. Setup boot_pagetable
-    la.global   $t0, boot_pagetable
-    la.global   $t1, boot_pagetable_2nd
-    and         $t1, $t1, $t2
-
-    addi.d      $t0, $t0, 2040
-    st.d        $t1, $t0, 8  # boot_pagetable[256] = phys(boot_pagetable_2nd)
-
     # 5. Enable MMU
     la.global   $t0, boot_pagetable
     and         $t0, $t0, $t2
@@ -131,11 +123,3 @@ boot_pagetable:
     .zero 8 * 191
     .quad 0 # [448] To be assigned with phys(boot_pagetable_2nd)
     .zero 8 * 63
-
-.globl boot_pagetable_2nd
-boot_pagetable_2nd:
-    .quad 0x00000000 | 0x1c3 # V | D | HUGE | P | W
-    .quad 0x40000000 | 0x1c3 # V | D | HUGE | P | W
-    .quad 0x80000000 | 0x1c3 # V | D | HUGE | P | W
-    .quad 0
-    .zero 8 * 508
