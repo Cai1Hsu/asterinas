@@ -43,3 +43,35 @@ pub(crate) fn enable_cpu_features() {
     // enable float point
     loongArch64::register::euen::set_fpe(true);
 }
+
+pub(crate) fn init_on_bsp() {
+    // SAFETY: this function is only called once on BSP.
+    unsafe {
+        trap::init(true);
+    }
+    irq::init();
+
+    // SAFETY: they are only called once on BSP and ACPI has been initialized.
+    unsafe {
+        crate::cpu::init_num_cpus();
+        crate::cpu::set_this_cpu_id(0);
+    }
+
+    // SAFETY: no CPU local objects have been accessed by this far. And
+    // we are on the BSP.
+    unsafe { crate::cpu::local::init_on_bsp() };
+
+    crate::sync::init();
+
+    crate::boot::smp::boot_all_aps();
+
+    timer::init();
+}
+
+pub(crate) unsafe fn init_on_ap() {
+    unimplemented!()
+}
+
+pub(crate) fn interrupts_ack(_irq_number: usize) {
+    unimplemented!()
+}
