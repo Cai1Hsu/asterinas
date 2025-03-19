@@ -38,3 +38,8 @@ pub fn read_tsc() -> u64 {
     }
     pmc as u64
 }
+
+pub(crate) fn enable_cpu_features() {
+    // enable float point
+    loongArch64::register::euen::set_fpe(true);
+}
