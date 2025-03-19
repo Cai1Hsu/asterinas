@@ -7,6 +7,7 @@ pub mod device;
 pub mod iommu;
 pub(crate) mod irq;
 pub(crate) mod mm;
+pub(crate) mod pci;
 pub mod qemu;
 pub mod serial;
 pub mod task;
