@@ -3,12 +3,11 @@ use core::{fmt::Debug, ops::Range};
 use ostd_pod::Pod;
 
 use crate::{
-    mm::{
+    early_println, mm::{
         page_table::PageTableEntryTrait, CachePolicy, Paddr, PageFlags, PageProperty,
         PagingConstsTrait, PagingLevel, PodOnce, PrivilegedPageFlags as PrivFlags, Vaddr,
         PAGE_SIZE,
-    },
-    util::SameSizeAs,
+    }, util::SameSizeAs
 };
 
 pub(crate) const NR_ENTRIES_PER_PAGE: usize = 512;
@@ -239,16 +238,18 @@ impl Debug for PageTableEntry {
 pub unsafe fn activate_page_table(root_paddr: Paddr, _root_pt_cache: CachePolicy) {
     assert!(root_paddr % PagingConsts::BASE_PAGE_SIZE == 0);
 
+    // Assume that we have only one page table
     loongArch64::register::pgdh::set_base(root_paddr);
     loongArch64::register::pgdl::set_base(root_paddr);
 }
 
 pub fn current_page_table_paddr() -> Paddr {
-    // TODO: we return pgdh for now because the boot page table initialization
-    // uses this function. We should change this once we have a better way to
-    // get the boot page table.
-    // Same as above for activate_page_table.
-    loongArch64::register::pgdh::read().raw()
+    let pgdl = loongArch64::register::pgdl::read().raw();
+    let pgdh = loongArch64::register::pgdh::read().raw();
+
+    assert_eq!(pgdh, pgdl);
+
+    pgdl
 }
 
 pub(crate) fn __memcpy_fallible(dst: *mut u8, src: *const u8, size: usize) -> usize {

@@ -60,7 +60,7 @@ _start:
     la.global   $t0, boot_pagetable
     and         $t0, $t0, $t2
     csrwr       $t0, 0x1a       # LOONGARCH_CSR_PGDH
-    ori         $t0, $zero, 0x0
+    csrrd       $t0, 0x1a
     csrwr       $t0, 0x19       # LOONGARCH_CSR_PGDL
     invtlb      0x00, $zero, $zero
 
