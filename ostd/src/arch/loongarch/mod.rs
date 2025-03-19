@@ -8,4 +8,5 @@ pub mod iommu;
 pub(crate) mod irq;
 pub mod qemu;
 pub mod serial;
+pub mod task;
 pub mod timer;
