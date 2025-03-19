@@ -4,3 +4,4 @@
 //! This module mainly contains the APIs that should exposed to the device driver like PCI, RTC
 
 pub mod io_port;
+pub mod mmio_port;
