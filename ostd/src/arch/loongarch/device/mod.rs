@@ -5,3 +5,4 @@
 
 pub mod io_port;
 pub mod mmio_port;
+pub mod serial;
