@@ -5,10 +5,11 @@ use core::{fmt::Debug, ops::Range};
 use ostd_pod::Pod;
 
 use crate::{
+    cpu_local_cell,
     mm::{
-        page_table::PageTableEntryTrait, CachePolicy, Paddr, PageFlags, PageProperty,
-        PagingConstsTrait, PagingLevel, PodOnce, PrivilegedPageFlags as PrivFlags, Vaddr,
-        PAGE_SIZE,
+        kspace::KERNEL_PAGE_TABLE, page_table::PageTableEntryTrait, CachePolicy, Paddr, PageFlags,
+        PageProperty, PagingConstsTrait, PagingLevel, PodOnce, PrivilegedPageFlags as PrivFlags,
+        Vaddr, PAGE_SIZE,
     },
     util::SameSizeAs,
 };
@@ -237,27 +238,76 @@ impl Debug for PageTableEntry {
     }
 }
 
+cpu_local_cell! {
+    /// TODO: Investigate whether this mechanism is correct.
+    ///
+    /// This CPU-local variable emulates a single virtual page table CSR like on other platforms.
+    /// It is used to store the root address of the last-activated (current) page table.
+    /// We expect this variable to fully emulate the behavior of page table CSRs on other architectures:
+    /// - Before entering user space, `current_page_table_paddr` returns `pgdh`, triggering `pgdl` activation.
+    /// - After returning from user space to the kernel, `current_page_table_paddr` returns `pgdl`.
+    /// Combined with the handling in `activate_page_table`, we aim to achieve:
+    /// - Boot page table is activated only once during the boot phase.
+    /// - Kernel page table is activated only once during the ostd initialization phase.
+    /// - User page table is correctly activated when needed.
+    /// - Subsequent repeated activations of the kernel page table are ignored.
+    static VIRTUAL_PT_CSR: Paddr = 0;
+    static KERNEL_PT_ACTIVATED: bool = false;
+}
+
 /// Activate the given level 4 page table.
 ///
 /// # Safety
 ///
 /// Changing the level 4 page table is unsafe, because it's possible to violate memory safety by
 /// changing the page mapping.
+///
+/// Modifying page tables without invoking this function may lead to undefined behavior.
 pub unsafe fn activate_page_table(root_paddr: Paddr, _root_pt_cache: CachePolicy) {
     assert!(root_paddr % PagingConsts::BASE_PAGE_SIZE == 0);
 
-    // Assume that we have only one page table
-    loongArch64::register::pgdh::set_base(root_paddr);
-    loongArch64::register::pgdl::set_base(root_paddr);
+    VIRTUAL_PT_CSR.store(root_paddr);
+
+    match KERNEL_PAGE_TABLE.get().map(|kpt| kpt.root_paddr()) {
+        Some(kernel_pt) if kernel_pt != root_paddr => {
+            loongArch64::register::pgdl::set_base(root_paddr)
+        }
+        kernel_pt => {
+            debug_assert_eq!(kernel_pt, Some(root_paddr));
+
+            if !KERNEL_PT_ACTIVATED.load() {
+                KERNEL_PT_ACTIVATED.store(true);
+
+                loongArch64::register::pgdh::set_base(root_paddr);
+            } else {
+                #[cfg(debug_assertions)]
+                {
+                    let pgdh = loongArch64::register::pgdh::read().base();
+                    debug_assert_eq!(pgdh, root_paddr); // ensure that the kernel page table is already activated.
+                }
+            }
+        }
+    }
 }
 
 pub fn current_page_table_paddr() -> Paddr {
-    let pgdl = loongArch64::register::pgdl::read().raw();
-    let pgdh = loongArch64::register::pgdh::read().raw();
+    let virtual_pt_csr = VIRTUAL_PT_CSR.load();
 
-    assert_eq!(pgdh, pgdl);
+    let pgdh = loongArch64::register::pgdh::read().base();
+    let pgdl = loongArch64::register::pgdl::read().base();
 
-    pgdl
+    match KERNEL_PAGE_TABLE.get() {
+        None => {
+            // Ensure that virtual pt csr must be either of the pgds.
+            debug_assert!(virtual_pt_csr == 0 || virtual_pt_csr == pgdh);
+            pgdh
+        }
+        _ => {
+            debug_assert!(virtual_pt_csr != 0);
+            debug_assert!(virtual_pt_csr == pgdh || virtual_pt_csr == pgdl);
+            virtual_pt_csr
+        }
+    }
 }
 
 pub(crate) fn __memcpy_fallible(dst: *mut u8, src: *const u8, size: usize) -> usize {
