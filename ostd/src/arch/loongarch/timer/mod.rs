@@ -24,6 +24,4 @@ pub(super) fn init() {
     let timer_freq = cc_freq * cc_mul / cc_div;
 
     TIMEBASE_FREQ.store(timer_freq, Ordering::Relaxed);
-
-    // TODO: add abstraction for ls7a-rtc
 }
