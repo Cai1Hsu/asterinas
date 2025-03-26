@@ -5,10 +5,11 @@
 use alloc::fmt;
 use core::fmt::Write;
 
-use super::device::serial::SerialPort;
+use spin::Once;
 
-// TODO: probe the serial port by walking fdt
-static UART_PORT: SerialPort = unsafe { SerialPort::new(0x1fe001e0) };
+use super::{boot::DEVICE_TREE, device::serial::SerialPort};
+
+static UART_PORT: Once<SerialPort> = Once::new();
 
 /// Prints the formatted arguments to the standard output using the serial port.
 #[inline]
@@ -28,8 +29,9 @@ struct Stdout;
 
 impl Write for Stdout {
     fn write_str(&mut self, s: &str) -> fmt::Result {
+        let port = UART_PORT.get().unwrap();
         for &c in s.as_bytes() {
-            send(c);
+            port.send(c);
         }
         Ok(())
     }
@@ -37,10 +39,18 @@ impl Write for Stdout {
 
 /// Initializes the serial port.
 pub(crate) fn init() {
-    UART_PORT.init();
+    let chosen = DEVICE_TREE.get().unwrap().find_node("/serial").unwrap();
+    if let Some(compatible) = chosen.compatible()
+        && compatible.all().any(|c| c == "ns16550a")
+    {
+        let base_paddr = chosen.reg().unwrap().next().unwrap().starting_address as usize;
+        let uart_port = unsafe { SerialPort::new(base_paddr) };
+
+        UART_PORT.call_once(|| uart_port);
+    }
 }
 
 /// Sends a byte on the serial port.
 pub fn send(data: u8) {
-    UART_PORT.send(data);
+    UART_PORT.get().unwrap().send(data);
 }
