@@ -5,6 +5,7 @@
 use alloc::{boxed::Box, fmt::Debug, vec::Vec};
 
 use id_alloc::IdAlloc;
+use loongArch64::register::ecfg::LineBasedInterrupt;
 use spin::Once;
 
 use super::trap::TrapFrame;
@@ -129,16 +130,16 @@ pub(crate) fn init() {
 }
 
 pub(crate) fn enable_local() {
-    // TODO
+    loongArch64::register::ecfg::set_lie(LineBasedInterrupt::all());
 }
 
 pub(crate) fn disable_local() {
-    // TODO
+    loongArch64::register::ecfg::set_lie(LineBasedInterrupt::empty());
 }
 
 pub(crate) fn is_local_enabled() -> bool {
-    // TODO
-    true
+    let ecfg = loongArch64::register::ecfg::read();
+    !ecfg.lie().is_empty()
 }
 
 /// Sends a general inter-processor interrupt (IPI) to the specified CPU.
