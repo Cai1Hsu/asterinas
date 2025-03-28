@@ -4,7 +4,8 @@
 
 pub mod local;
 
-use core::fmt::Debug;
+use alloc::boxed::Box;
+use core::{arch::global_asm, fmt::Debug};
 
 use loongArch64::register::estat::{Exception, Trap};
 
@@ -12,37 +13,65 @@ pub use super::trap::GeneralRegs as RawGeneralRegs;
 use super::trap::{TrapFrame, UserContext as RawUserContext};
 use crate::user::{ReturnReason, UserContextApi, UserContextApiInternal};
 
+global_asm!(include_str!("fpu.S"));
+
+/// The FPU registers.
+#[repr(C)]
+#[derive(Debug, Clone, Default)]
+pub struct FpRegs {
+    fregs: [f64; 32],
+    fcsr: u64, // Floating-Point Control and Status Register
+    fcc: u8,   // Floating-Point Condition Flags Registers
+}
+
+impl FpRegs {
+    fn save(&self) {
+        unsafe extern "C" {
+            unsafe fn fstate_save(dst: *mut FpRegs);
+        }
+
+        // FIXME: FpuState::save without mutable reference?
+        unsafe { fstate_save(self as *const FpRegs as *mut FpRegs) }
+    }
+
+    fn restore(&self) {
+        unsafe extern "C" {
+            unsafe fn fstate_restore(dst: *const FpRegs);
+        }
+
+        unsafe { fstate_restore(self as *const FpRegs) }
+    }
+}
+
 /// The FPU state of user task.
 ///
 /// This could be used for saving both legacy and modern state format.
-#[derive(Debug, Clone, Copy)]
-pub struct FpuState {}
+#[derive(Debug, Clone)]
+pub struct FpuState {
+    floating_state: Box<FpRegs>,
+}
 
 impl FpuState {
     /// Initializes a new instance.
     pub fn init() -> Self {
-        Self {}
+        Self {
+            floating_state: Box::new(FpRegs::default()),
+        }
     }
 
     /// Returns whether the instance can contains valid state.
     pub fn is_valid(&self) -> bool {
-        // TODO
         true
     }
 
     /// Save CPU's current FPU state into this instance.
     pub fn save(&self) {
-        // TODO
+        self.floating_state.save();
     }
 
     /// Restores CPU's FPU state from this instance.
     pub fn restore(&self) {
-        // TODO
-    }
-
-    /// Clear the instance.
-    pub fn clear(&self) {
-        // TODO
+        self.floating_state.restore();
     }
 }
 
@@ -79,7 +108,7 @@ impl Default for UserContext {
                 ..RawUserContext::default()
             },
             trap: Trap::Exception(Exception::Breakpoint),
-            fpu_state: FpuState {},
+            fpu_state: FpuState::init(),
             cpu_exception_info: CpuExceptionInfo::default(),
         }
     }
