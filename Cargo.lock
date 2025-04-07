@@ -777,12 +777,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4271d37baee1b8c7e4b708028c57d816cf9d2434acb33a549475f78c181f6253"
 
 [[package]]
-name = "gimli"
-version = "0.31.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
-
-[[package]]
 name = "half"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1291,7 +1285,7 @@ dependencies = [
  "buddy_system_allocator",
  "cfg-if",
  "fdt",
- "gimli 0.28.1",
+ "gimli",
  "iced-x86",
  "id-alloc",
  "inherit-methods-macro",
@@ -1311,7 +1305,6 @@ dependencies = [
  "smallvec",
  "spin",
  "tdx-guest",
- "unwinding",
  "volatile 0.6.1",
  "x86",
  "x86_64",
@@ -1882,15 +1875,6 @@ checksum = "9f214e8f697e925001e66ec2c6e37a4ef93f0f78c2eed7814394e10c62025b05"
 dependencies = [
  "generic-array",
  "subtle",
-]
-
-[[package]]
-name = "unwinding"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51f06a05848f650946acef3bf525fe96612226b61f74ae23ffa4e98bfbb8ab3c"
-dependencies = [
- "gimli 0.31.1",
 ]
 
 [[package]]
