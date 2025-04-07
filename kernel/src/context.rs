@@ -2,11 +2,12 @@
 
 //! The context that can be accessed from the current task, thread or process.
 
-use core::mem;
+use core::{cell::Ref, mem};
 
+use aster_rights::Full;
 use ostd::{
-    mm::{Fallible, Infallible, VmReader, VmSpace, VmWriter},
-    task::Task,
+    mm::{Fallible, Infallible, VmReader, VmWriter},
+    task::{CurrentTask, Task},
 };
 
 use crate::{
@@ -16,6 +17,7 @@ use crate::{
         Process,
     },
     thread::Thread,
+    vm::vmar::Vmar,
 };
 
 /// The context that can be accessed from the current POSIX thread.
@@ -31,14 +33,14 @@ pub struct Context<'a> {
 impl Context<'_> {
     /// Gets the userspace of the current task.
     pub fn user_space(&self) -> CurrentUserSpace {
-        CurrentUserSpace::new(self.task)
+        CurrentUserSpace(self.thread_local.root_vmar().borrow())
     }
 }
 
 /// The user's memory space of the current task.
 ///
 /// It provides methods to read from or write to the user space efficiently.
-pub struct CurrentUserSpace<'a>(&'a VmSpace);
+pub struct CurrentUserSpace<'a>(Ref<'a, Option<Vmar<Full>>>);
 
 /// Gets the [`CurrentUserSpace`] from the current task.
 ///
@@ -52,40 +54,39 @@ macro_rules! current_userspace {
 }
 
 impl<'a> CurrentUserSpace<'a> {
-    /// Creates a new `CurrentUserSpace` from the specified task.
-    ///
-    /// This method is _not_ recommended for use, as it does not verify whether the provided
-    /// `task` is the current task in release builds.
+    /// Creates a new `CurrentUserSpace` from the current task.
     ///
     /// If you have access to a [`Context`], it is preferable to call [`Context::user_space`].
     ///
     /// Otherwise, you can use the `current_userspace` macro
     /// to obtain an instance of `CurrentUserSpace` if it will only be used once.
+    pub fn new(current_task: &'a CurrentTask) -> Self {
+        let thread_local = current_task.as_thread_local().unwrap();
+        let vmar_ref = thread_local.root_vmar().borrow();
+        Self(vmar_ref)
+    }
+
+    /// Returns the root `Vmar` of the current userspace.
     ///
     /// # Panics
     ///
-    /// This method will panic in debug builds if the specified `task` is not the current task.
-    pub fn new(task: &'a Task) -> Self {
-        let user_space = task.user_space().unwrap();
-        debug_assert!(Arc::ptr_eq(
-            task.user_space().unwrap(),
-            Task::current().unwrap().user_space().unwrap()
-        ));
-        Self(user_space.vm_space())
+    /// This method will panic if the current process has cleared its `Vmar`.
+    pub fn root_vmar(&self) -> &Vmar<Full> {
+        self.0.as_ref().unwrap()
     }
 
     /// Creates a reader to read data from the user space of the current task.
     ///
     /// Returns `Err` if the `vaddr` and `len` do not represent a user space memory range.
     pub fn reader(&self, vaddr: Vaddr, len: usize) -> Result<VmReader<'_, Fallible>> {
-        Ok(self.0.reader(vaddr, len)?)
+        Ok(self.root_vmar().vm_space().reader(vaddr, len)?)
     }
 
     /// Creates a writer to write data into the user space.
     ///
     /// Returns `Err` if the `vaddr` and `len` do not represent a user space memory range.
     pub fn writer(&self, vaddr: Vaddr, len: usize) -> Result<VmWriter<'_, Fallible>> {
-        Ok(self.0.writer(vaddr, len)?)
+        Ok(self.root_vmar().vm_space().writer(vaddr, len)?)
     }
 
     /// Reads bytes into the destination `VmWriter` from the user space of the
@@ -203,13 +204,15 @@ impl ReadCString for VmReader<'_, Fallible> {
         );
 
         // Handle the rest of the bytes in bulk
+        let mut cloned_reader = self.clone();
         while (buffer.len() + mem::size_of::<usize>()) <= max_len {
-            let Ok(word) = self.read_val::<usize>() else {
+            let Ok(word) = cloned_reader.read_val::<usize>() else {
                 break;
             };
 
             if has_zero(word) {
                 for byte in word.to_ne_bytes() {
+                    self.skip(1);
                     buffer.push(byte);
                     if byte == 0 {
                         return Ok(CString::from_vec_with_nul(buffer)
@@ -219,6 +222,7 @@ impl ReadCString for VmReader<'_, Fallible> {
                 unreachable!("The branch should never be reached unless `has_zero` has bugs.")
             }
 
+            self.skip(size_of::<usize>());
             buffer.extend_from_slice(&word.to_ne_bytes());
         }
 
@@ -265,4 +269,30 @@ fn check_vaddr(va: Vaddr) -> Result<()> {
 /// Checks if the given address is aligned.
 const fn is_addr_aligned(addr: usize) -> bool {
     (addr & (mem::size_of::<usize>() - 1)) == 0
+}
+
+#[cfg(ktest)]
+mod test {
+    use ostd::prelude::*;
+
+    use super::*;
+
+    #[ktest]
+    fn read_multiple_cstring() {
+        let mut buffer = vec![0u8; 100];
+
+        let str1 = CString::new("hello").unwrap();
+        let str2 = CString::new("world!").unwrap();
+
+        let mut writer = VmWriter::from(buffer.as_mut_slice());
+        writer.write(&mut VmReader::from(str1.as_bytes_with_nul()));
+        writer.write(&mut VmReader::from(str2.as_bytes_with_nul()));
+        drop(writer);
+
+        let mut reader = VmReader::from(buffer.as_slice()).to_fallible();
+        let read_str1 = reader.read_cstring().unwrap();
+        assert_eq!(read_str1, str1);
+        let read_str2 = reader.read_cstring().unwrap();
+        assert_eq!(read_str2, str2);
+    }
 }

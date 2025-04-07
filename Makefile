@@ -18,6 +18,8 @@ LOG_LEVEL ?= error
 SCHEME ?= ""
 SMP ?= 1
 OSTD_TASK_STACK_SIZE_IN_PAGES ?= 64
+FEATURES ?=
+NO_DEFAULT_FEATURES ?= 0
 # End of global build options.
 
 # GDB debugging and profiling options.
@@ -33,7 +35,6 @@ GDB_PROFILE_INTERVAL ?= 0.1
 AUTO_TEST ?= none
 EXTRA_BLOCKLISTS_DIRS ?= ""
 SYSCALL_TEST_DIR ?= /tmp
-FEATURES ?=
 # End of auto test features.
 
 # Network settings
@@ -93,6 +94,9 @@ endif
 ifdef FEATURES
 CARGO_OSDK_ARGS += --features="$(FEATURES)"
 endif
+ifeq ($(NO_DEFAULT_FEATURES), 1)
+CARGO_OSDK_ARGS += --no-default-features
+endif
 
 # To test the linux-efi-handover64 boot protocol, we need to use Debian's
 # GRUB release, which is installed in /usr/bin in our Docker image.
@@ -100,6 +104,9 @@ ifeq ($(BOOT_PROTOCOL), linux-efi-handover64)
 CARGO_OSDK_ARGS += --grub-mkrescue=/usr/bin/grub-mkrescue
 CARGO_OSDK_ARGS += --grub-boot-protocol="linux"
 # FIXME: GZIP self-decompression (--encoding gzip) triggers CPU faults
+CARGO_OSDK_ARGS += --encoding raw
+else ifeq ($(BOOT_PROTOCOL), linux-efi-pe64)
+CARGO_OSDK_ARGS += --grub-boot-protocol="linux"
 CARGO_OSDK_ARGS += --encoding raw
 else ifeq ($(BOOT_PROTOCOL), linux-legacy32)
 CARGO_OSDK_ARGS += --linux-x86-legacy-boot
@@ -144,7 +151,9 @@ NON_OSDK_CRATES := \
 # In contrast, OSDK crates depend on OSTD (or being `ostd` itself)
 # and need to be built or tested with OSDK.
 OSDK_CRATES := \
-	osdk/test-kernel \
+	osdk/deps/frame-allocator \
+	osdk/deps/heap-allocator \
+	osdk/deps/test-kernel \
 	ostd \
 	ostd/libs/linux-bzimage/setup \
 	kernel \

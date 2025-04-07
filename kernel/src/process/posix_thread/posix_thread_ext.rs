@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use ostd::{
-    cpu::UserContext,
-    task::Task,
-    user::{UserContextApi, UserSpace},
-};
+use ostd::{cpu::context::UserContext, task::Task, user::UserContextApi};
 
 use super::{builder::PosixThreadBuilder, name::ThreadName, PosixThread};
 use crate::{
@@ -13,7 +9,7 @@ use crate::{
         thread_info::ThreadFsInfo,
     },
     prelude::*,
-    process::{process_vm::ProcessVm, program_loader::load_program_to_vm, Credentials, Process},
+    process::{process_vm::ProcessVm, program_loader::ProgramToLoad, Credentials, Process},
     thread::{AsThread, Thread, Tid},
 };
 
@@ -52,16 +48,17 @@ pub fn create_posix_task_from_executable(
         let fs_resolver = fs.resolver().read();
         let fs_path = FsPath::new(AT_FDCWD, executable_path)?;
         let elf_file = fs.resolver().read().lookup(&fs_path)?;
-        load_program_to_vm(process_vm, elf_file, argv, envp, &fs_resolver, 1)?
+        let program_to_load =
+            ProgramToLoad::build_from_file(elf_file, &fs_resolver, argv, envp, 1)?;
+        process_vm.clear_and_map();
+        program_to_load.load_to_vm(process_vm, &fs_resolver)?
     };
 
-    let vm_space = process_vm.root_vmar().vm_space().clone();
-    let mut cpu_ctx = UserContext::default();
-    cpu_ctx.set_instruction_pointer(elf_load_info.entry_point() as _);
-    cpu_ctx.set_stack_pointer(elf_load_info.user_stack_top() as _);
-    let user_space = Arc::new(UserSpace::new(vm_space, cpu_ctx));
+    let mut user_ctx = UserContext::default();
+    user_ctx.set_instruction_pointer(elf_load_info.entry_point() as _);
+    user_ctx.set_stack_pointer(elf_load_info.user_stack_top() as _);
     let thread_name = Some(ThreadName::new_from_executable_path(executable_path)?);
-    let thread_builder = PosixThreadBuilder::new(tid, user_space, credentials)
+    let thread_builder = PosixThreadBuilder::new(tid, Arc::new(user_ctx), credentials)
         .thread_name(thread_name)
         .process(process)
         .fs(Arc::new(fs));

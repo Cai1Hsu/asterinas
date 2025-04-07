@@ -19,6 +19,7 @@ RUN apt update && apt-get install -y --no-install-recommends \
     git-core \ 
     gnupg \ 
     libevent-dev \ 
+    libslirp-dev \ 
     libssl-dev \ 
     jq \
     python3-pip \ 
@@ -306,7 +307,7 @@ RUN apt update && apt-get install -y --no-install-recommends \
     libglib2.0-dev  `# build dependency` \ 
     libpixman-1-dev `# build dependency` \ 
     libusb-dev      `# optional build dependency` \ 
-    meson \
+    meson \ 
     ninja-build
 RUN apt clean && rm -rf /var/lib/apt/lists/*
 
@@ -457,6 +458,8 @@ RUN apt update && apt-get install -y --no-install-recommends \
     {% endif %}
     iptables \ 
     iproute2 \ 
+    libnl-3-dev         `# dependency for netlink socket` \ 
+    libnl-route-3-dev   `# dependency for netlink route socket` \ 
     libpixman-1-dev     `# running dependency for QEMU` \ 
     mtools              `# used by grub-mkrescue` \ 
     net-tools \ 

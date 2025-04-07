@@ -1,7 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-    "osdk/test-kernel",
+    "osdk/deps/frame-allocator",
+    "osdk/deps/heap-allocator",
+    "osdk/deps/test-kernel",
     "ostd",
     "ostd/libs/align_ext",
     "ostd/libs/ostd-macros",
@@ -48,8 +50,12 @@ allow_attributes = "warn"
 # Cargo only looks at the profile settings 
 # in the Cargo.toml manifest at the root of the workspace
 
+[profile.dev]
+panic = "unwind"
+
 [profile.release]
 lto = "thin"
+panic = "unwind"
 
 # Release profile configuration with Link Time Optimization (LTO) enabled.
 #

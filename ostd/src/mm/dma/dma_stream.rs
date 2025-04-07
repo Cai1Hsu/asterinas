@@ -9,6 +9,7 @@ use super::{check_and_insert_dma_mapping, remove_dma_mapping, DmaError, HasDaddr
 use crate::{
     arch::iommu,
     error::Error,
+    if_tdx_enabled,
     mm::{
         dma::{dma_type, Daddr, DmaType},
         HasPaddr, Infallible, Paddr, USegment, UntypedMem, VmIo, VmReader, VmWriter, PAGE_SIZE,
@@ -17,7 +18,6 @@ use crate::{
 
 cfg_if! {
     if #[cfg(all(target_arch = "x86_64", feature = "cvm_guest"))] {
-        use ::tdx_guest::tdx_is_enabled;
         use crate::arch::tdx_guest;
     }
 }
@@ -72,17 +72,17 @@ impl DmaStream {
         start_paddr.checked_add(frame_count * PAGE_SIZE).unwrap();
         let start_daddr = match dma_type() {
             DmaType::Direct => {
-                #[cfg(all(target_arch = "x86_64", feature = "cvm_guest"))]
-                // SAFETY:
-                // This is safe because we are ensuring that the physical address range specified by `start_paddr` and `frame_count` is valid before these operations.
-                // The `check_and_insert_dma_mapping` function checks if the physical address range is already mapped.
-                // We are also ensuring that we are only modifying the page table entries corresponding to the physical address range specified by `start_paddr` and `frame_count`.
-                // Therefore, we are not causing any undefined behavior or violating any of the requirements of the 'unprotect_gpa_range' function.
-                if tdx_is_enabled() {
+                if_tdx_enabled!({
+                    #[cfg(target_arch = "x86_64")]
+                    // SAFETY:
+                    // This is safe because we are ensuring that the physical address range specified by `start_paddr` and `frame_count` is valid before these operations.
+                    // The `check_and_insert_dma_mapping` function checks if the physical address range is already mapped.
+                    // We are also ensuring that we are only modifying the page table entries corresponding to the physical address range specified by `start_paddr` and `frame_count`.
+                    // Therefore, we are not causing any undefined behavior or violating any of the requirements of the 'unprotect_gpa_range' function.
                     unsafe {
                         tdx_guest::unprotect_gpa_range(start_paddr, frame_count).unwrap();
                     }
-                }
+                });
                 start_paddr as Daddr
             }
             DmaType::Iommu => {
@@ -182,17 +182,17 @@ impl Drop for DmaStreamInner {
         start_paddr.checked_add(frame_count * PAGE_SIZE).unwrap();
         match dma_type() {
             DmaType::Direct => {
-                #[cfg(all(target_arch = "x86_64", feature = "cvm_guest"))]
-                // SAFETY:
-                // This is safe because we are ensuring that the physical address range specified by `start_paddr` and `frame_count` is valid before these operations.
-                // The `start_paddr()` ensures the `start_paddr` is page-aligned.
-                // We are also ensuring that we are only modifying the page table entries corresponding to the physical address range specified by `start_paddr` and `frame_count`.
-                // Therefore, we are not causing any undefined behavior or violating any of the requirements of the `protect_gpa_range` function.
-                if tdx_is_enabled() {
+                if_tdx_enabled!({
+                    #[cfg(target_arch = "x86_64")]
+                    // SAFETY:
+                    // This is safe because we are ensuring that the physical address range specified by `start_paddr` and `frame_count` is valid before these operations.
+                    // The `start_paddr()` ensures the `start_paddr` is page-aligned.
+                    // We are also ensuring that we are only modifying the page table entries corresponding to the physical address range specified by `start_paddr` and `frame_count`.
+                    // Therefore, we are not causing any undefined behavior or violating any of the requirements of the `protect_gpa_range` function.
                     unsafe {
                         tdx_guest::protect_gpa_range(start_paddr, frame_count).unwrap();
                     }
-                }
+                });
             }
             DmaType::Iommu => {
                 for i in 0..frame_count {
@@ -305,23 +305,15 @@ impl<Dma: AsRef<DmaStream>> DmaStreamSlice<Dma> {
 
     /// Returns a reader to read data from it.
     pub fn reader(&self) -> Result<VmReader<Infallible>, Error> {
-        let stream_reader = self
-            .stream
-            .as_ref()
-            .reader()?
-            .skip(self.offset)
-            .limit(self.len);
+        let mut stream_reader = self.stream.as_ref().reader()?;
+        stream_reader.skip(self.offset).limit(self.len);
         Ok(stream_reader)
     }
 
     /// Returns a writer to write data into it.
     pub fn writer(&self) -> Result<VmWriter<Infallible>, Error> {
-        let stream_writer = self
-            .stream
-            .as_ref()
-            .writer()?
-            .skip(self.offset)
-            .limit(self.len);
+        let mut stream_writer = self.stream.as_ref().writer()?;
+        stream_writer.skip(self.offset).limit(self.len);
         Ok(stream_writer)
     }
 }
@@ -354,80 +346,12 @@ impl<Dma: AsRef<DmaStream>> HasPaddr for DmaStreamSlice<Dma> {
     }
 }
 
-impl Clone for DmaStreamSlice<DmaStream> {
+impl<Dma: AsRef<DmaStream> + Clone> Clone for DmaStreamSlice<Dma> {
     fn clone(&self) -> Self {
         Self {
             stream: self.stream.clone(),
             offset: self.offset,
             len: self.len,
         }
-    }
-}
-
-#[cfg(ktest)]
-mod test {
-    use alloc::vec;
-
-    use super::*;
-    use crate::{mm::FrameAllocOptions, prelude::*};
-
-    #[ktest]
-    fn streaming_map() {
-        let segment = FrameAllocOptions::new()
-            .alloc_segment_with(1, |_| ())
-            .unwrap();
-        let dma_stream =
-            DmaStream::map(segment.clone().into(), DmaDirection::Bidirectional, true).unwrap();
-        assert!(dma_stream.paddr() == segment.start_paddr());
-    }
-
-    #[ktest]
-    fn duplicate_map() {
-        let segment_parent = FrameAllocOptions::new()
-            .alloc_segment_with(2, |_| ())
-            .unwrap();
-        let segment_child = segment_parent.slice(&(0..PAGE_SIZE));
-        let dma_stream_parent =
-            DmaStream::map(segment_parent.into(), DmaDirection::Bidirectional, false);
-        let dma_stream_child =
-            DmaStream::map(segment_child.into(), DmaDirection::Bidirectional, false);
-        assert!(dma_stream_parent.is_ok());
-        assert!(dma_stream_child.is_err());
-    }
-
-    #[ktest]
-    fn read_and_write() {
-        let segment = FrameAllocOptions::new()
-            .alloc_segment_with(2, |_| ())
-            .unwrap();
-        let dma_stream =
-            DmaStream::map(segment.into(), DmaDirection::Bidirectional, false).unwrap();
-
-        let buf_write = vec![1u8; 2 * PAGE_SIZE];
-        dma_stream.write_bytes(0, &buf_write).unwrap();
-        dma_stream.sync(0..2 * PAGE_SIZE).unwrap();
-        let mut buf_read = vec![0u8; 2 * PAGE_SIZE];
-        dma_stream.read_bytes(0, &mut buf_read).unwrap();
-        assert_eq!(buf_write, buf_read);
-    }
-
-    #[ktest]
-    fn reader_and_writer() {
-        let segment = FrameAllocOptions::new()
-            .alloc_segment_with(2, |_| ())
-            .unwrap();
-        let dma_stream =
-            DmaStream::map(segment.into(), DmaDirection::Bidirectional, false).unwrap();
-
-        let buf_write = vec![1u8; PAGE_SIZE];
-        let mut writer = dma_stream.writer().unwrap();
-        writer.write(&mut buf_write.as_slice().into());
-        writer.write(&mut buf_write.as_slice().into());
-        dma_stream.sync(0..2 * PAGE_SIZE).unwrap();
-        let mut buf_read = vec![0u8; 2 * PAGE_SIZE];
-        let buf_write = vec![1u8; 2 * PAGE_SIZE];
-        let mut reader = dma_stream.reader().unwrap();
-        reader.read(&mut buf_read.as_mut_slice().into());
-        assert_eq!(buf_read, buf_write);
     }
 }

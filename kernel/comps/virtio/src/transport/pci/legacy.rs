@@ -10,7 +10,7 @@ use ostd::{
         pci::{capability::CapabilityData, cfg_space::Bar, common_device::PciCommonDevice},
         BusProbeError,
     },
-    io_mem::IoMem,
+    io::IoMem,
     mm::{DmaCoherent, HasDaddr, PAGE_SIZE},
     trap::IrqCallbackFunction,
 };
@@ -95,7 +95,7 @@ impl VirtioPciLegacyTransport {
         };
         info!("[Virtio]: Found device:{:?}", device_type);
 
-        let config_bar = common_device.bar_manager().bar(0).unwrap();
+        let config_bar = common_device.bar_manager().bar(0).clone().unwrap();
 
         let mut num_queues = 0u16;
         while num_queues < u16::MAX {

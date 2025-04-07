@@ -38,12 +38,16 @@ pub mod segment;
 pub mod unique;
 pub mod untyped;
 
+#[cfg(ktest)]
+mod test;
+
 use core::{
     marker::PhantomData,
     mem::ManuallyDrop,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
+pub use allocator::GlobalFrameAllocator;
 use meta::{mapping, AnyFrameMeta, GetFrameError, MetaSlot, REF_COUNT_UNUSED};
 pub use segment::Segment;
 use untyped::{AnyUFrameMeta, UFrame};
@@ -61,7 +65,6 @@ static MAX_PADDR: AtomicUsize = AtomicUsize::new(0);
 /// Frames are associated with metadata. The type of the metadata `M` is
 /// determines the kind of the frame. If `M` implements [`AnyUFrameMeta`], the
 /// frame is a untyped frame. Otherwise, it is a typed frame.
-#[derive(Debug)]
 #[repr(transparent)]
 pub struct Frame<M: AnyFrameMeta + ?Sized> {
     ptr: *const MetaSlot,
@@ -71,6 +74,12 @@ pub struct Frame<M: AnyFrameMeta + ?Sized> {
 unsafe impl<M: AnyFrameMeta + ?Sized> Send for Frame<M> {}
 
 unsafe impl<M: AnyFrameMeta + ?Sized> Sync for Frame<M> {}
+
+impl<M: AnyFrameMeta + ?Sized> core::fmt::Debug for Frame<M> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Frame({:#x})", self.start_paddr())
+    }
+}
 
 impl<M: AnyFrameMeta> Frame<M> {
     /// Gets a [`Frame`] with a specific usage from a raw, unused page.
@@ -220,6 +229,8 @@ impl<M: AnyFrameMeta + ?Sized> Drop for Frame<M> {
 
             // SAFETY: this is the last reference and is about to be dropped.
             unsafe { self.slot().drop_last_in_place() };
+
+            allocator::get_global_frame_allocator().dealloc(self.start_paddr(), PAGE_SIZE);
         }
     }
 }

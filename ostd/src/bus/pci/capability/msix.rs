@@ -16,13 +16,13 @@ use crate::{
         common_device::PciCommonDevice,
         device_info::PciDeviceLocation,
     },
+    if_tdx_enabled,
     mm::VmIoOnce,
     trap::IrqLine,
 };
 
 cfg_if! {
     if #[cfg(all(target_arch = "x86_64", feature = "cvm_guest"))] {
-        use ::tdx_guest::tdx_is_enabled;
         use crate::arch::tdx_guest;
     }
 }
@@ -73,10 +73,9 @@ impl CapabilityMsixData {
         let pba_bar;
 
         let bar_manager = dev.bar_manager_mut();
-        bar_manager.set_invisible((pba_info & 0b111) as u8);
-        bar_manager.set_invisible((table_info & 0b111) as u8);
         match bar_manager
-            .bar_space_without_invisible((pba_info & 0b111) as u8)
+            .bar((pba_info & 0b111) as u8)
+            .clone()
             .expect("MSIX cfg:pba BAR is none")
         {
             Bar::Memory(memory) => {
@@ -87,7 +86,8 @@ impl CapabilityMsixData {
             }
         };
         match bar_manager
-            .bar_space_without_invisible((table_info & 0b111) as u8)
+            .bar((table_info & 0b111) as u8)
+            .clone()
             .expect("MSIX cfg:table BAR is none")
         {
             Bar::Memory(memory) => {
@@ -108,20 +108,20 @@ impl CapabilityMsixData {
 
         // Set message address 0xFEE0_0000
         for i in 0..table_size {
-            #[cfg(all(target_arch = "x86_64", feature = "cvm_guest"))]
-            // SAFETY:
-            // This is safe because we are ensuring that the physical address of the MSI-X table is valid before this operation.
-            // We are also ensuring that we are only unprotecting a single page.
-            // The MSI-X table will not exceed one page size, because the size of an MSI-X entry is 16 bytes, and 256 entries are required to fill a page,
-            // which is just equal to the number of all the interrupt numbers on the x86 platform.
-            // It is better to add a judgment here in case the device deliberately uses so many interrupt numbers.
-            // In addition, due to granularity, the minimum value that can be set here is only one page.
-            // Therefore, we are not causing any undefined behavior or violating any of the requirements of the `unprotect_gpa_range` function.
-            if tdx_is_enabled() {
+            if_tdx_enabled!({
+                #[cfg(target_arch = "x86_64")]
+                // SAFETY:
+                // This is safe because we are ensuring that the physical address of the MSI-X table is valid before this operation.
+                // We are also ensuring that we are only unprotecting a single page.
+                // The MSI-X table will not exceed one page size, because the size of an MSI-X entry is 16 bytes, and 256 entries are required to fill a page,
+                // which is just equal to the number of all the interrupt numbers on the x86 platform.
+                // It is better to add a judgment here in case the device deliberately uses so many interrupt numbers.
+                // In addition, due to granularity, the minimum value that can be set here is only one page.
+                // Therefore, we are not causing any undefined behavior or violating any of the requirements of the `unprotect_gpa_range` function.
                 unsafe {
                     tdx_guest::unprotect_gpa_range(table_bar.io_mem().paddr(), 1).unwrap();
                 }
-            }
+            });
             // Set message address and disable this msix entry
             table_bar
                 .io_mem()

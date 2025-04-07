@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use alloc::sync::Arc;
-use core::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+use alloc::sync::{Arc, Weak};
 
-use smoltcp::{socket::PollAt, time::Instant, wire::IpEndpoint};
+use smoltcp::wire::IpEndpoint;
 use spin::once::Once;
 use takeable::Takeable;
 
@@ -45,8 +44,6 @@ pub struct SocketBg<T: Inner<E>, E: Ext> {
     pub(super) bound: BoundPort<E>,
     pub(super) inner: T,
     observer: Once<T::Observer>,
-    events: AtomicU8,
-    next_poll_at_ms: AtomicU64,
 }
 
 impl<T: Inner<E>, E: Ext> Drop for Socket<T, E> {
@@ -58,13 +55,22 @@ impl<T: Inner<E>, E: Ext> Drop for Socket<T, E> {
 }
 
 impl<T: Inner<E>, E: Ext> Socket<T, E> {
-    pub(crate) fn new(bound: BoundPort<E>, inner: T) -> Self {
+    pub(super) fn new(bound: BoundPort<E>, inner: T) -> Self {
         Self(Takeable::new(Arc::new(SocketBg {
             bound,
             inner,
             observer: Once::new(),
-            events: AtomicU8::new(0),
-            next_poll_at_ms: AtomicU64::new(u64::MAX),
+        })))
+    }
+
+    pub(super) fn new_cyclic<F>(bound: BoundPort<E>, inner_fn: F) -> Self
+    where
+        F: FnOnce(&Weak<SocketBg<T, E>>) -> T,
+    {
+        Self(Takeable::new(Arc::new_cyclic(|weak| SocketBg {
+            bound,
+            inner: inner_fn(weak),
+            observer: Once::new(),
         })))
     }
 
@@ -100,80 +106,23 @@ define_boolean_value!(
 );
 
 impl<T: Inner<E>, E: Ext> SocketBg<T, E> {
-    pub(crate) fn has_events(&self) -> bool {
-        self.events.load(Ordering::Relaxed) != 0
-    }
-
-    pub(crate) fn on_events(&self) {
-        // This method can only be called to process network events, so we assume we are holding the
-        // poll lock and no race conditions can occur.
-        let events = self.events.load(Ordering::Relaxed);
-        self.events.store(0, Ordering::Relaxed);
-
-        if let Some(observer) = self.observer.get() {
-            observer.on_events(SocketEvents::from_bits_truncate(events));
-        }
-    }
-
-    pub(crate) fn on_dead_events(self: Arc<Self>)
+    pub(crate) fn notify_dead_events(self: Arc<Self>)
     where
         T::Observer: Clone,
     {
-        // This method can only be called to process network events, so we assume we are holding the
-        // poll lock and no race conditions can occur.
-        let events = self.events.load(Ordering::Relaxed);
-        self.events.store(0, Ordering::Relaxed);
-
         let observer = self.observer.get().cloned();
         drop(self);
 
         // Notify dead events after the `Arc` is dropped to ensure the observer sees this event
         // with the expected reference count. See `TcpConnection::connect_state` for an example.
         if let Some(ref observer) = observer {
-            observer.on_events(SocketEvents::from_bits_truncate(events));
+            observer.on_events(SocketEvents::CLOSED_SEND | SocketEvents::CLOSED_RECV);
         }
     }
 
-    pub(super) fn add_events(&self, new_events: SocketEvents) {
-        // This method can only be called to add network events, so we assume we are holding the
-        // poll lock and no race conditions can occur.
-        let events = self.events.load(Ordering::Relaxed);
-        self.events
-            .store(events | new_events.bits(), Ordering::Relaxed);
-    }
-
-    /// Returns the next polling time.
-    ///
-    /// Note: a zero means polling should be done now and a `u64::MAX` means no polling is required
-    /// before new network or user events.
-    pub(crate) fn next_poll_at_ms(&self) -> u64 {
-        self.next_poll_at_ms.load(Ordering::Relaxed)
-    }
-
-    /// Updates the next polling time according to `poll_at`.
-    ///
-    /// The update is typically needed after new network or user events have been handled, so this
-    /// method also marks that there may be new events, so that the event observer provided by
-    /// [`Socket::init_observer`] can be notified later.
-    pub(super) fn update_next_poll_at_ms(&self, poll_at: PollAt) -> NeedIfacePoll {
-        match poll_at {
-            PollAt::Now => {
-                self.next_poll_at_ms.store(0, Ordering::Relaxed);
-                NeedIfacePoll::TRUE
-            }
-            PollAt::Time(instant) => {
-                let old_total_millis = self.next_poll_at_ms.load(Ordering::Relaxed);
-                let new_total_millis = instant.total_millis() as u64;
-
-                self.next_poll_at_ms
-                    .store(new_total_millis, Ordering::Relaxed);
-
-                NeedIfacePoll(new_total_millis < old_total_millis)
-            }
-            PollAt::Ingress => {
-                self.next_poll_at_ms.store(u64::MAX, Ordering::Relaxed);
-                NeedIfacePoll::FALSE
-            }
+    pub(super) fn notify_events(&self, new_events: SocketEvents) {
+        if let Some(observer) = self.observer.get() {
+            observer.on_events(new_events);
         }
     }
 }
@@ -184,12 +133,5 @@ impl<T: Inner<E>, E: Ext> SocketBg<T, E> {
     /// The check is intended to be lock-free and fast, but may have false positives.
     pub(crate) fn can_process(&self, dst_port: u16) -> bool {
         self.bound.port() == dst_port
-    }
-
-    /// Returns whether the socket _may_ generate an outgoing packet.
-    ///
-    /// The check is intended to be lock-free and fast, but may have false positives.
-    pub(crate) fn need_dispatch(&self, now: Instant) -> bool {
-        now.total_millis() as u64 >= self.next_poll_at_ms.load(Ordering::Relaxed)
     }
 }

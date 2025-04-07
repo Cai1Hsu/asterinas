@@ -32,7 +32,7 @@ pub mod collections;
 pub mod console;
 pub mod cpu;
 mod error;
-pub mod io_mem;
+pub mod io;
 pub mod logger;
 pub mod mm;
 pub mod panic;
@@ -43,11 +43,14 @@ pub mod task;
 pub mod timer;
 pub mod trap;
 pub mod user;
-mod util;
+pub(crate) mod util;
 
 use core::sync::atomic::{AtomicBool, Ordering};
 
-pub use ostd_macros::{main, panic_handler};
+pub use ostd_macros::{
+    global_frame_allocator, global_heap_allocator, global_heap_allocator_slot_map, main,
+    panic_handler,
+};
 pub use ostd_pod::Pod;
 
 pub use self::{error::Error, prelude::Result};
@@ -67,26 +70,47 @@ pub use self::{error::Error, prelude::Result};
 #[doc(hidden)]
 unsafe fn init() {
     arch::enable_cpu_features();
-    arch::serial::init();
 
-    #[cfg(feature = "cvm_guest")]
-    arch::init_cvm_guest();
+    // SAFETY: This function is called only once, before `allocator::init`
+    // and after memory regions are initialized.
+    unsafe {
+        mm::frame::allocator::init_early_allocator();
+    }
+
+    if_tdx_enabled!({
+    } else {
+        arch::serial::init();
+    });
 
     logger::init();
 
-    // SAFETY: This function is called only once and only on the BSP.
-    unsafe { cpu::local::early_init_bsp_local_base() };
+    // SAFETY:
+    // 1. They are only called once in the boot context of the BSP.
+    // 2. The number of CPUs are available because ACPI has been initialized.
+    // 3. No CPU-local objects have been accessed yet.
+    unsafe { cpu::init_on_bsp() };
 
-    // SAFETY: This function is called only once and only on the BSP.
-    unsafe { mm::heap_allocator::init() };
+    // SAFETY: We are on the BSP and APs are not yet started.
+    let meta_pages = unsafe { mm::frame::meta::init() };
+    // The frame allocator should be initialized immediately after the metadata
+    // is initialized. Otherwise the boot page table can't allocate frames.
+    // SAFETY: This function is called only once.
+    unsafe { mm::frame::allocator::init() };
+
+    mm::kspace::init_kernel_page_table(meta_pages);
+
+    crate::sync::init();
 
     boot::init_after_heap();
 
-    mm::frame::allocator::init();
-    mm::kspace::init_kernel_page_table(mm::init_page_meta());
     mm::dma::init();
 
-    arch::init_on_bsp();
+    unsafe { arch::late_init_on_bsp() };
+
+    if_tdx_enabled!({
+        arch::serial::init();
+    });
+    arch::serial::callback_init();
 
     smp::init();
 

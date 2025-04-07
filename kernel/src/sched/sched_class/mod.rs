@@ -58,6 +58,7 @@ pub fn init() {
 /// information may also be stored here.
 pub struct ClassScheduler {
     rqs: Box<[SpinLock<PerCpuClassRqSet>]>,
+    last_chosen_cpu: AtomicCpuId,
 }
 
 /// Represents the run queue for each CPU core. It stores a list of run queues for
@@ -212,9 +213,18 @@ impl Scheduler for ClassScheduler {
             return None;
         }
 
+        // Preempt if the new task has a higher priority.
+        let should_preempt = rq
+            .current
+            .as_ref()
+            .is_none_or(|((_, rq_current_thread), _)| {
+                thread.sched_attr().policy() < rq_current_thread.sched_attr().policy()
+            });
+
         thread.sched_attr().set_last_cpu(cpu);
         rq.enqueue_entity((task, thread), Some(flags));
-        Some(cpu)
+
+        should_preempt.then_some(cpu)
     }
 
     fn local_mut_rq_with(&self, f: &mut dyn FnMut(&mut dyn LocalRunQueue)) {
@@ -242,6 +252,7 @@ impl ClassScheduler {
         };
         ClassScheduler {
             rqs: all_cpus().map(class_rq).collect(),
+            last_chosen_cpu: AtomicCpuId::default(),
         }
     }
 
@@ -251,11 +262,28 @@ impl ClassScheduler {
             return last_cpu;
         }
         debug_assert!(flags == EnqueueFlags::Spawn);
-        let affinity = thread.atomic_cpu_affinity();
         let guard = disable_local();
+        let affinity = thread.atomic_cpu_affinity().load();
         let mut selected = guard.current_cpu();
         let mut minimum_load = u32::MAX;
-        for candidate in affinity.load().iter() {
+        let last_chosen = match self.last_chosen_cpu.get() {
+            Some(cpu) => cpu.as_usize() as isize,
+            None => -1,
+        };
+        // Simulate a round-robin selection starting from the last chosen CPU.
+        //
+        // It still checks every CPU to find the one with the minimum load, but
+        // avoids keeping selecting the same CPU when there are multiple equally
+        // idle CPUs.
+        let affinity_iter = affinity
+            .iter()
+            .filter(|&cpu| cpu.as_usize() as isize > last_chosen)
+            .chain(
+                affinity
+                    .iter()
+                    .filter(|&cpu| cpu.as_usize() as isize <= last_chosen),
+            );
+        for candidate in affinity_iter {
             let rq = self.rqs[candidate.as_usize()].lock();
             let (load, _) = rq.nr_queued_and_running();
             if load < minimum_load {
@@ -263,6 +291,7 @@ impl ClassScheduler {
                 selected = candidate;
             }
         }
+        self.last_chosen_cpu.set_anyway(selected);
         selected
     }
 }
@@ -302,11 +331,9 @@ impl LocalRunQueue for PerCpuClassRqSet {
 
     fn pick_next_current(&mut self) -> Option<&Arc<Task>> {
         self.pick_next_entity().and_then(|next| {
-            let next_ptr = Arc::as_ptr(&next.0);
+            // We guarantee that a task can appear at once in a `PerCpuClassRqSet`. So, the `next` cannot be the same
+            // as the current task here.
             if let Some((old, _)) = self.current.replace((next, CurrentRuntime::new())) {
-                if Arc::as_ptr(&old.0) == next_ptr {
-                    return None;
-                }
                 self.enqueue_entity(old, None);
             }
             self.current.as_ref().map(|((task, _), _)| task)

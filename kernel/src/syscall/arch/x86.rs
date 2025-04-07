@@ -26,7 +26,7 @@ use crate::syscall::{
     fallocate::sys_fallocate,
     fcntl::sys_fcntl,
     flock::sys_flock,
-    fork::sys_fork,
+    fork::{sys_fork, sys_vfork},
     fsync::{sys_fdatasync, sys_fsync},
     futex::sys_futex,
     get_priority::sys_get_priority,
@@ -52,11 +52,13 @@ use crate::syscall::{
     gettid::sys_gettid,
     gettimeofday::sys_gettimeofday,
     getuid::sys_getuid,
+    getxattr::{sys_fgetxattr, sys_getxattr, sys_lgetxattr},
     impl_syscall_nums_and_dispatch_fn,
     ioctl::sys_ioctl,
     kill::sys_kill,
     link::{sys_link, sys_linkat},
     listen::sys_listen,
+    listxattr::{sys_flistxattr, sys_listxattr, sys_llistxattr},
     lseek::sys_lseek,
     madvise::sys_madvise,
     mkdir::{sys_mkdir, sys_mkdirat},
@@ -82,6 +84,7 @@ use crate::syscall::{
     readlink::{sys_readlink, sys_readlinkat},
     recvfrom::sys_recvfrom,
     recvmsg::sys_recvmsg,
+    removexattr::{sys_fremovexattr, sys_lremovexattr, sys_removexattr},
     rename::{sys_rename, sys_renameat},
     rmdir::sys_rmdir,
     rt_sigaction::sys_rt_sigaction,
@@ -122,8 +125,10 @@ use crate::syscall::{
     setsid::sys_setsid,
     setsockopt::sys_setsockopt,
     setuid::sys_setuid,
+    setxattr::{sys_fsetxattr, sys_lsetxattr, sys_setxattr},
     shutdown::sys_shutdown,
     sigaltstack::sys_sigaltstack,
+    signalfd::{sys_signalfd, sys_signalfd4},
     socket::sys_socket,
     socketpair::sys_socketpair,
     stat::{sys_fstat, sys_fstatat, sys_lstat, sys_stat},
@@ -200,6 +205,7 @@ impl_syscall_nums_and_dispatch_fn! {
     SYS_GETSOCKOPT = 55        => sys_getsockopt(args[..5]);
     SYS_CLONE = 56             => sys_clone(args[..5], &user_ctx);
     SYS_FORK = 57              => sys_fork(args[..0], &user_ctx);
+    SYS_VFORK = 58             => sys_vfork(args[..0], &user_ctx);
     SYS_EXECVE = 59            => sys_execve(args[..3], &mut user_ctx);
     SYS_EXIT = 60              => sys_exit(args[..1]);
     SYS_WAIT4 = 61             => sys_wait4(args[..4]);
@@ -283,6 +289,18 @@ impl_syscall_nums_and_dispatch_fn! {
     SYS_MOUNT = 165            => sys_mount(args[..5]);
     SYS_UMOUNT2 = 166           => sys_umount(args[..2]);
     SYS_GETTID = 186           => sys_gettid(args[..0]);
+    SYS_SETXATTR = 188         => sys_setxattr(args[..5]);
+    SYS_LSETXATTR = 189        => sys_lsetxattr(args[..5]);
+    SYS_FSETXATTR = 190        => sys_fsetxattr(args[..5]);
+    SYS_GETXATTR = 191         => sys_getxattr(args[..4]);
+    SYS_LGETXATTR = 192        => sys_lgetxattr(args[..4]);
+    SYS_FGETXATTR = 193        => sys_fgetxattr(args[..4]);
+    SYS_LISTXATTR = 194        => sys_listxattr(args[..3]);
+    SYS_LLISTXATTR = 195       => sys_llistxattr(args[..3]);
+    SYS_FLISTXATTR = 196       => sys_flistxattr(args[..3]);
+    SYS_REMOVEXATTR = 197      => sys_removexattr(args[..2]);
+    SYS_LREMOVEXATTR = 198     => sys_lremovexattr(args[..2]);
+    SYS_FREMOVEXATTR = 199     => sys_fremovexattr(args[..2]);
     SYS_TIME = 201             => sys_time(args[..1]);
     SYS_FUTEX = 202            => sys_futex(args[..6]);
     SYS_SCHED_SETAFFINITY = 203 => sys_sched_setaffinity(args[..3]);
@@ -320,9 +338,11 @@ impl_syscall_nums_and_dispatch_fn! {
     SYS_SET_ROBUST_LIST = 273  => sys_set_robust_list(args[..2]);
     SYS_UTIMENSAT = 280        => sys_utimensat(args[..4]);
     SYS_EPOLL_PWAIT = 281      => sys_epoll_pwait(args[..6]);
+    SYS_SIGNALFD = 282         => sys_signalfd(args[..3]);
     SYS_EVENTFD = 284          => sys_eventfd(args[..1]);
     SYS_FALLOCATE = 285        => sys_fallocate(args[..4]);
     SYS_ACCEPT4 = 288          => sys_accept4(args[..4]);
+    SYS_SIGNALFD4 = 289        => sys_signalfd4(args[..4]);
     SYS_EVENTFD2 = 290         => sys_eventfd2(args[..2]);
     SYS_EPOLL_CREATE1 = 291    => sys_epoll_create1(args[..1]);
     SYS_DUP3 = 292             => sys_dup3(args[..3]);

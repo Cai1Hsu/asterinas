@@ -2,22 +2,78 @@
 
 // The boot routine executed by the application processor.
 
-.extern boot_gdtr
-.extern boot_page_table_start
-.extern ap_early_entry
+.global ap_boot_from_real_mode
+.global ap_boot_from_long_mode
 
 .section ".ap_boot", "awx"
 .align 4096
+
+IA32_APIC_BASE_MSR = 0x1B
+IA32_X2APIC_APICID_MSR = 0x802
+IA32_EFER_MSR = 0xC0000080
+
+XAPIC_APICID_MMIO_ADDR = 0xFEE00020
+
+.macro setup_64bit_gdt_and_page_table eax
+    // Use the 64-bit GDT.
+.extern boot_gdtr
+    lgdt [boot_gdtr]
+
+    // Set the NX bit support in the EFER MSR.
+    mov ecx, IA32_EFER_MSR 
+    rdmsr
+    or eax, 1 << 11 // support no-execute PTE flag
+    wrmsr
+
+    // Enable PAE and PGE.
+    mov \eax, cr4
+    or  \eax, 0xa0
+    mov cr4, \eax
+
+    // Set the page table. The application processors use
+    // the same page table as the bootstrap processor's
+    // boot phase page table.
+    xor \eax, \eax  // clear the upper 32 bits if \eax is 64-bit
+    mov eax, __boot_page_table_pointer  // 32-bit load
+    mov cr3, \eax
+.endm
+
 .code16
-
-IA32_APIC_BASE = 0x1B
-IA32_X2APIC_APICID = 0x802
-MMIO_XAPIC_APICID = 0xFEE00020
-
-ap_real_mode_boot:
+ap_boot_from_real_mode:
     cli // disable interrupts
     cld
 
+    jmp ap_real_mode
+
+.code64
+ap_boot_from_long_mode:
+    cli // disable interrupts
+    cld
+
+    // The firmware stores the local APIC ID in R8D, see:
+    // <https://github.com/tianocore/edk2/blob/14b730cde8bfd56bba10cf78b24338b6a59b989f/OvmfPkg/TdxDxe/X64/ApRunLoop.nasm#L67-L73>.
+    // FIXME: This is an implementation detail of the specific firmware. We
+    // should NOT rely on it. We should NOT even try to rely on the local APIC
+    // ID, because the APIC IDs on real hardware may NOT be contiguous (i.e.,
+    // there may be holes where the holes do not represent logical processors).
+    // We should compute the CPU ID ourselves using atomic operations.
+    mov edi, r8d
+
+    setup_64bit_gdt_and_page_table rax
+
+    // Some firmware seems to provide per-AP stacks that we can use. However,
+    // the ACPI specification does not promise that the stack is usable. It is
+    // better not to rely on such implementation details.
+    lea rsp, [rip + retf_stack_bottom]
+    retf // 32-bit far return
+.align 8
+retf_stack_bottom:
+.long ap_long_mode_in_low_address
+.long 0x8
+retf_stack_top:
+
+.code16
+ap_real_mode:
     xor ax, ax  // clear ax
     mov ds, ax  // clear ds
 
@@ -59,11 +115,11 @@ ap_protect_entry:
 
     // Tell if it is xAPIC or x2APIC.
     // IA32_APIC_BASE register:
-    // bit 8:       BSP—Processor is BSP
-    // bit 10:      EXTD—Enable x2APIC mode
-    // bit 11:      EN—xAPIC global enable/disable
-    // bit 12-35:   APIC Base—Base physical address
-    mov ecx, IA32_APIC_BASE
+    //  - bit 8:       BSP—Processor is BSP
+    //  - bit 10:      EXTD—Enable x2APIC mode
+    //  - bit 11:      EN—xAPIC global enable/disable
+    //  - bit 12-35:   APIC Base—Base physical address
+    mov ecx, IA32_APIC_BASE_MSR
     rdmsr
     and eax, 0x400  // check EXTD bit
     cmp eax, 0x400
@@ -72,14 +128,14 @@ ap_protect_entry:
 xapic_mode:
     // In xAPIC mode, the local APIC ID is stored in 
     // the MMIO region.
-    mov eax, [MMIO_XAPIC_APICID]
+    mov eax, [XAPIC_APICID_MMIO_ADDR]
     shr eax, 24
     jmp ap_protect
 
 x2apic_mode:
     // In x2APIC mode, the local APIC ID is stored in 
     // IA32_X2APIC_APICID MSR.
-    mov ecx, IA32_X2APIC_APICID
+    mov ecx, IA32_X2APIC_APICID_MSR
     rdmsr
     jmp ap_protect
 
@@ -98,25 +154,13 @@ ap_protect:
 
     // Now we try getting into long mode.
 
-    // Use the 64-bit GDT.
-    lgdt [boot_gdtr]
-
-    // Enable PAE and PGE.
-    mov eax, cr4
-    or  eax, 0xa0
-    mov cr4, eax
-
-    // Set the page table. The application processors use
-    // the same page table as the bootstrap processor's
-    // boot phase page table.
-    mov eax, __boot_page_table_pointer
-    mov cr3, eax
+    setup_64bit_gdt_and_page_table eax
 
     // Enable long mode.
-    mov ecx, 0xc0000080 
-    rdmsr   // load EFER MSR
+    mov ecx, IA32_EFER_MSR 
+    rdmsr
     or eax, 1 << 8
-    wrmsr   // set long bit
+    wrmsr
 
     // Enable paging.
     mov eax, cr0
@@ -139,11 +183,11 @@ ap_long_mode_in_low_address:
     jmp rax
 
 .data
-// This is a pointer to be filled by the BSP when boot stacks
+// This is a pointer to be filled by the BSP when boot information
 // of all APs are allocated and initialized.
-.global __ap_boot_stack_array_pointer
+.global __ap_boot_info_array_pointer
 .align 8
-__ap_boot_stack_array_pointer:
+__ap_boot_info_array_pointer:
     .skip 8
 
 .text
@@ -151,14 +195,21 @@ __ap_boot_stack_array_pointer:
 ap_long_mode:
     // The local APIC ID is in the RDI.
     mov rax, rdi
-    shl rax, 3
+    shl rax, 4                   // 16-byte `PerApRawInfo`
 
+    mov rbx, [rip + __ap_boot_info_array_pointer]
     // Setup the stack.
-    mov rbx, [__ap_boot_stack_array_pointer]
-    mov rsp, [rbx + rax]
-    xor rbp, rbp
+    mov rsp, [rbx + rax - 16]    // raw_info[cpu_id - 1].stack_top
+    // Setup the GS base (the CPU-local address).
+    mov rax, [rbx + rax - 8]     // raw_info[cpu_id - 1].cpu_local
+    mov rdx, rax
+    shr rdx, 32          // EDX:EAX = raw_info.cpu_local
+    mov ecx, 0xC0000101  // ECX = GS.base
+    wrmsr
 
     // Go to Rust code.
+.extern ap_early_entry
+    xor rbp, rbp
     mov rax, offset ap_early_entry
     call rax
 

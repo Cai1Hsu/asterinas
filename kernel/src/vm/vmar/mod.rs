@@ -11,10 +11,7 @@ use core::{num::NonZeroUsize, ops::Range};
 
 use align_ext::AlignExt;
 use aster_rights::Rights;
-use ostd::{
-    cpu::CpuExceptionInfo,
-    mm::{tlb::TlbFlushOp, PageFlags, PageProperty, VmSpace, MAX_USERSPACE_VADDR},
-};
+use ostd::mm::{tlb::TlbFlushOp, PageFlags, PageProperty, VmSpace, MAX_USERSPACE_VADDR};
 
 use self::{
     interval_set::{Interval, IntervalSet},
@@ -24,7 +21,7 @@ use super::page_fault_handler::PageFaultHandler;
 use crate::{
     prelude::*,
     process::{Process, ResourceType},
-    thread::exception::{handle_page_fault_from_vm_space, PageFaultInfo},
+    thread::exception::PageFaultInfo,
     vm::{
         perms::VmPerms,
         vmo::{Vmo, VmoRightsOp},
@@ -305,8 +302,7 @@ impl Vmar_ {
 
     fn new_root() -> Arc<Self> {
         let vmar_inner = VmarInner::new();
-        let mut vm_space = VmSpace::new();
-        vm_space.register_page_fault_handler(handle_page_fault_wrapper);
+        let vm_space = VmSpace::new();
         Vmar_::new(vmar_inner, Arc::new(vm_space), 0, ROOT_VMAR_CAP_ADDR)
     }
 
@@ -430,8 +426,7 @@ impl Vmar_ {
     pub(super) fn new_fork_root(self: &Arc<Self>) -> Result<Arc<Self>> {
         let new_vmar_ = {
             let vmar_inner = VmarInner::new();
-            let mut new_space = VmSpace::new();
-            new_space.register_page_fault_handler(handle_page_fault_wrapper);
+            let new_space = VmSpace::new();
             Vmar_::new(vmar_inner, Arc::new(new_space), self.base, self.size)
         };
 
@@ -462,18 +457,11 @@ impl Vmar_ {
             }
             cur_cursor.flusher().issue_tlb_flush(TlbFlushOp::All);
             cur_cursor.flusher().dispatch_tlb_flush();
+            cur_cursor.flusher().sync_tlb_flush();
         }
 
         Ok(new_vmar_)
     }
-}
-
-/// This is for fallible user space write handling.
-fn handle_page_fault_wrapper(
-    vm_space: &VmSpace,
-    trap_info: &CpuExceptionInfo,
-) -> core::result::Result<(), ()> {
-    handle_page_fault_from_vm_space(vm_space, &trap_info.try_into().unwrap())
 }
 
 impl<R> Vmar<R> {
@@ -493,8 +481,8 @@ impl<R> Vmar<R> {
 /// Options for creating a new mapping. The mapping is not allowed to overlap
 /// with any child VMARs. And unless specified otherwise, it is not allowed
 /// to overlap with any existing mapping, either.
-pub struct VmarMapOptions<R1, R2> {
-    parent: Vmar<R1>,
+pub struct VmarMapOptions<'a, R1, R2> {
+    parent: &'a Vmar<R1>,
     vmo: Option<Vmo<R2>>,
     perms: VmPerms,
     vmo_offset: usize,
@@ -509,14 +497,14 @@ pub struct VmarMapOptions<R1, R2> {
     handle_page_faults_around: bool,
 }
 
-impl<R1, R2> VmarMapOptions<R1, R2> {
+impl<'a, R1, R2> VmarMapOptions<'a, R1, R2> {
     /// Creates a default set of options with the VMO and the memory access
     /// permissions.
     ///
     /// The VMO must have access rights that correspond to the memory
     /// access permissions. For example, if `perms` contains `VmPerms::Write`,
     /// then `vmo.rights()` should contain `Rights::WRITE`.
-    pub fn new(parent: Vmar<R1>, size: usize, perms: VmPerms) -> Self {
+    pub fn new(parent: &'a Vmar<R1>, size: usize, perms: VmPerms) -> Self {
         Self {
             parent,
             vmo: None,
