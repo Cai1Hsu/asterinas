@@ -5,6 +5,8 @@ pub mod common_cfg;
 pub mod device;
 pub mod driver;
 pub mod legacy;
+
+#[cfg(feature = "msix")]
 pub(super) mod msix;
 
 use alloc::sync::Arc;

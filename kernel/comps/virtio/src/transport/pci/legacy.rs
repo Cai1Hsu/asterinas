@@ -7,7 +7,7 @@ use aster_util::safe_ptr::SafePtr;
 use log::{info, warn};
 use ostd::{
     bus::{
-        pci::{capability::CapabilityData, cfg_space::Bar, common_device::PciCommonDevice},
+        pci::{cfg_space::Bar, common_device::PciCommonDevice},
         BusProbeError,
     },
     io::IoMem,
@@ -18,8 +18,7 @@ use ostd::{
 use crate::{
     queue::UsedElem,
     transport::{
-        pci::msix::VirtioMsixManager, AvailRing, ConfigManager, Descriptor, UsedRing,
-        VirtioTransport, VirtioTransportError,
+        AvailRing, ConfigManager, Descriptor, UsedRing, VirtioTransport, VirtioTransportError,
     },
     DeviceStatus, VirtioDeviceType,
 };
@@ -67,6 +66,7 @@ pub struct VirtioPciLegacyTransport {
     common_device: PciCommonDevice,
     config_bar: Bar,
     num_queues: u16,
+    #[cfg(feature = "msix")]
     msix_manager: VirtioMsixManager,
 }
 
@@ -109,26 +109,33 @@ impl VirtioPciLegacyTransport {
             num_queues += 1;
         }
 
-        // TODO: Support interrupt without MSI-X
-        let mut msix = None;
-        for cap in common_device.capabilities().iter() {
-            match cap.capability_data() {
-                CapabilityData::Msix(data) => {
-                    msix = Some(data.clone());
+        #[cfg(feature = "msix")]
+        let msix_manager = {
+            // TODO: Support interrupt without MSI-X
+            let mut msix = None;
+
+            for cap in common_device.capabilities().iter() {
+                match cap.capability_data() {
+                    ostd::bus::pci::capability::CapabilityData::Msix(data) => {
+                        msix = Some(data.clone());
+                    }
+                    _ => continue,
                 }
-                _ => continue,
             }
-        }
-        let Some(msix) = msix else {
-            return Err((BusProbeError::ConfigurationSpaceError, common_device));
+
+            let Some(msix) = msix else {
+                return Err((BusProbeError::ConfigurationSpaceError, common_device));
+            };
+
+            VirtioMsixManager::new(msix);
         };
-        let msix_manager = VirtioMsixManager::new(msix);
 
         Ok(Self {
             device_type,
             common_device,
             config_bar,
             num_queues,
+            #[cfg(feature = "msix")]
             msix_manager,
         })
     }
@@ -206,9 +213,15 @@ impl VirtioTransport for VirtioPciLegacyTransport {
 
     fn device_config_bar(&self) -> Option<(Bar, usize)> {
         let bar = self.config_bar.clone();
-        let base = if self.msix_manager.is_enabled() {
-            DEVICE_CONFIG_OFFSET_WITH_MSIX
-        } else {
+        let base = {
+            #[cfg(feature = "msix")]
+            if self.msix_manager.is_msix_enabled() {
+                DEVICE_CONFIG_OFFSET_WITH_MSIX
+            } else {
+                DEVICE_CONFIG_OFFSET
+            }
+
+            #[cfg(not(feature = "msix"))]
             DEVICE_CONFIG_OFFSET
         };
 
@@ -279,20 +292,24 @@ impl VirtioTransport for VirtioPciLegacyTransport {
         if index >= self.num_queues() {
             return Err(VirtioTransportError::InvalidArgs);
         }
-        let (vector, irq) = if single_interrupt {
-            if let Some(unused_irq) = self.msix_manager.pop_unused_irq() {
-                unused_irq
+
+        #[cfg(feature = "msix")]
+        {
+            let (vector, irq) = if single_interrupt {
+                if let Some(unused_irq) = self.msix_manager.pop_unused_irq() {
+                    unused_irq
+                } else {
+                    warn!(
+                        "{:?}: `single_interrupt` ignored: no more IRQ lines available",
+                        self.device_type()
+                    );
+                    self.msix_manager.shared_irq_line()
+                }
             } else {
-                warn!(
-                    "{:?}: `single_interrupt` ignored: no more IRQ lines available",
-                    self.device_type()
-                );
                 self.msix_manager.shared_irq_line()
-            }
-        } else {
-            self.msix_manager.shared_irq_line()
-        };
-        irq.on_active(func);
+            };
+            irq.on_active(func);
+        }
 
         self.config_bar
             .write_once(QUEUE_SELECT_OFFSET, index)
@@ -303,6 +320,7 @@ impl VirtioTransport for VirtioPciLegacyTransport {
                 .unwrap(),
             index
         );
+        #[cfg(feature = "msix")]
         self.config_bar
             .write_once(QUEUE_MSIX_VECTOR_OFFSET, vector)
             .unwrap();
@@ -313,12 +331,15 @@ impl VirtioTransport for VirtioPciLegacyTransport {
         &mut self,
         func: Box<IrqCallbackFunction>,
     ) -> Result<(), VirtioTransportError> {
-        let (vector, irq) = self.msix_manager.config_msix_irq();
-        irq.on_active(func);
+        #[cfg(feature = "msix")]
+        {
+            let (vector, irq) = self.msix_manager.config_msix_irq();
+            irq.on_active(func);
 
-        self.config_bar
-            .write_once(CONFIG_MSIX_VECTOR_OFFSET, vector)
-            .unwrap();
+            self.config_bar
+                .write_once(CONFIG_MSIX_VECTOR_OFFSET, vector)
+                .unwrap();
+        }
         Ok(())
     }
 
