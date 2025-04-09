@@ -69,7 +69,7 @@ riscv = { version = "0.11.1", features = ["s-mode"] }
 all = ["cvm_guest", "msix"]
 
 cvm_guest = ["dep:tdx-guest", "ostd/cvm_guest"]
-msix = ["ostd/msix"]
+msix = ["aster-virtio/msix"]
 
 [lints]
 workspace = true
