@@ -62,5 +62,9 @@ default = ["cvm_guest"]
 cvm_guest = ["dep:tdx-guest", "dep:iced-x86"]
 msix = []
 
+# Enable `msix` feature by default on x86_64
+[target.'cfg(target_arch = "x86_64")'.features]
+default = ["msix"]
+
 [lints]
 workspace = true
