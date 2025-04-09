@@ -65,11 +65,9 @@ fixed = "1.28.0"
 riscv = { version = "0.11.1", features = ["s-mode"] }
 
 [features]
-all = ["cvm_guest"]
+all = ["cvm_guest", "msix"]
 
 cvm_guest = ["dep:tdx-guest", "ostd/cvm_guest"]
-
-[features]
 msix = ["aster-virtio/msix"]
 
 [dependencies.aster-virtio]
