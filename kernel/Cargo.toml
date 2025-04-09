@@ -71,8 +71,17 @@ all = ["cvm_guest", "msix"]
 cvm_guest = ["dep:tdx-guest", "ostd/cvm_guest"]
 msix = ["ostd/msix", "aster-virtio/msix"]
 
-[target.'cfg(target_arch = "x86_64")'.features]
-default = ["msix"]
+[target.'cfg(target_arch = "x86_64")'.dependencies.aster-virtio]
+path = "comps/virtio"
+features = ["msix"]
+default-features = false
+optional = false
+
+[target.'cfg(target_arch = "x86_64")'.dependencies.ostd]
+path = "../ostd"
+features = ["msix"]
+default-features = false
+optional = false
 
 [lints]
 workspace = true
