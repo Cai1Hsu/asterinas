@@ -71,7 +71,7 @@ all = ["cvm_guest", "msix"]
 cvm_guest = ["dep:tdx-guest", "ostd/cvm_guest"]
 msix = ["aster-virtio/msix"]
 
-[cfg.'target_arch = "x86_64".features]
+[target.'cfg(target_arch = "x86_64")'.features]
 default = ["msix"]
 
 [lints]
