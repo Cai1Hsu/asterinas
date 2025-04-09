@@ -11,6 +11,10 @@ protocol = "multiboot2"
 [qemu]
 args = "$(./tools/qemu_args.sh normal)"
 
+[build]
+supported_archs = ["x86_64"]
+features = ["msix"]
+
 # Special options for running
 [run.boot]
 kcmd_args = [
