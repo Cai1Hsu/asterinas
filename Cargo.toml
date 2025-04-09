@@ -57,6 +57,9 @@ panic = "unwind"
 lto = "thin"
 panic = "unwind"
 
+[target.'cfg(target_arch = "x86_64")'.features]
+default = ["msix"]
+
 # Release profile configuration with Link Time Optimization (LTO) enabled.
 #
 # This profile is optimized for maximum runtime performance, 
